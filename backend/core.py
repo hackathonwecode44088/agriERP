@@ -81,6 +81,13 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+async def require_admin(request: Request) -> dict:
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
 async def next_number(prefix: str) -> str:
     doc = await db.counters.find_one_and_update(
         {"_id": prefix}, {"$inc": {"seq": 1}}, upsert=True, return_document=True

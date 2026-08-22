@@ -101,7 +101,13 @@ const Invoices = () => {
           { key: "party", label: "Party", render: (r) => partyName(r) },
           { key: "product", label: "Product", render: (r) => productName(r) },
           { key: "bags", label: "Bags", align: "right" },
-          { key: "amount", label: "Amount", align: "right", render: (r) => money(r.amount) },
+          { key: "amount", label: "Taxable", align: "right", render: (r) => money(r.amount) },
+          {
+            key: "total_amount",
+            label: "Total",
+            align: "right",
+            render: (r) => money(r.total_amount ?? r.amount),
+          },
           { key: "payment_mode", label: "Mode" },
         ]}
         actions={(row) => (

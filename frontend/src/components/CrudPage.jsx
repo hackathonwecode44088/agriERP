@@ -42,6 +42,8 @@ export const CrudPage = ({
   testid,
   soft = true,
   computeAmount = false,
+  gst = false,
+  rateAlert = null,
   searchKeys = ["name"],
   onChanged,
 }) => {
@@ -149,6 +151,36 @@ export const CrudPage = ({
     const qty = form.rate_basis === "weight" ? Number(form.weight || 0) : Number(form.bags || 0);
     return qty * Number(form.rate || 0);
   }, [computeAmount, form]);
+
+  const gstRate = Number(form.gst_rate || 0);
+  const halfGst = (amount * gstRate) / 200;
+
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    if (!rateAlert || !open || !form.product_id) {
+      setStats(null);
+      return;
+    }
+    api
+      .get("/rate-stats", { params: { kind: rateAlert.kind, product_id: form.product_id } })
+      .then(({ data }) => setStats(data.count ? data : null))
+      .catch(() => setStats(null));
+  }, [rateAlert, open, form.product_id]); // eslint-disable-line
+
+  const rateWarning = useMemo(() => {
+    const rate = Number(form.rate || 0);
+    if (!stats || !rate || !stats.avg_rate) return null;
+    const diff = ((rate - stats.avg_rate) / stats.avg_rate) * 100;
+    if (Math.abs(diff) < 20) return null;
+    return {
+      diff: diff.toFixed(1),
+      avg: stats.avg_rate,
+      count: stats.count,
+      min: stats.min_rate,
+      max: stats.max_rate,
+      high: diff > 0,
+    };
+  }, [stats, form.rate]);
 
   const filtered = rows.filter((r) => {
     if (!term) return true;
@@ -282,12 +314,47 @@ export const CrudPage = ({
                 )}
               </div>
             ))}
+            {rateWarning && (
+              <div
+                data-testid={`${testid}-rate-alert`}
+                className="sm:col-span-2 border-l-2 border-secondary bg-secondary/10 px-4 py-3"
+              >
+                <p className="font-head text-sm font-semibold text-secondary">
+                  Rate is {Math.abs(rateWarning.diff)}% {rateWarning.high ? "above" : "below"} the recent average
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Last {rateWarning.count} entries for this product averaged {money(rateWarning.avg)} (range{" "}
+                  {money(rateWarning.min)}–{money(rateWarning.max)}). Double-check before saving.
+                </p>
+              </div>
+            )}
             {computeAmount && (
-              <div className="sm:col-span-2 flex items-center justify-between border border-primary/20 bg-primary/5 px-4 py-3">
-                <span className="text-sm font-medium">Calculated Amount</span>
-                <span data-testid={`${testid}-amount-preview`} className="font-head text-lg font-extrabold text-primary">
-                  {money(amount)}
-                </span>
+              <div className="sm:col-span-2 border border-primary/20 bg-primary/5 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Taxable Amount</span>
+                  <span
+                    data-testid={`${testid}-amount-preview`}
+                    className="font-head text-lg font-extrabold text-primary"
+                  >
+                    {money(amount)}
+                  </span>
+                </div>
+                {gst && gstRate > 0 && (
+                  <div className="mt-3 space-y-1 border-t border-primary/15 pt-3 text-sm">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>CGST @ {gstRate / 2}%</span>
+                      <span data-testid={`${testid}-cgst-preview`}>{money(halfGst)}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>SGST @ {gstRate / 2}%</span>
+                      <span data-testid={`${testid}-sgst-preview`}>{money(halfGst)}</span>
+                    </div>
+                    <div className="flex justify-between font-head font-extrabold">
+                      <span>Invoice Total</span>
+                      <span data-testid={`${testid}-total-preview`}>{money(amount + halfGst * 2)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -44,7 +44,7 @@ const Dashboard = () => {
           testid="stat-balance"
           label="Farmer Net Balance"
           icon={Wallet}
-          value={money(data?.farmer_balance)}
+          value={data?.farmer_balance === null ? "Admin only" : money(data?.farmer_balance)}
           sub="Debit minus credit across all farmer ledgers"
         />
       </div>

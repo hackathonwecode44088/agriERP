@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Building2,
@@ -16,6 +16,7 @@ import {
   Store,
   Tractor,
   Truck,
+  Users,
   Wallet,
   Warehouse,
   X,
@@ -27,8 +28,7 @@ const NAV = [
   {
     group: "Overview",
     items: [{ to: "/admin/dashboard", label: "Dashboard", icon: Gauge }],
-  },
-  {
+  },  {
     group: "Masters",
     items: [
       { to: "/admin/vendors", label: "Vendors", icon: Store },
@@ -67,6 +67,7 @@ const NAV = [
   },
   {
     group: "Accounts",
+    adminOnly: true,
     items: [
       { to: "/admin/ledger", label: "Farmer Ledger", icon: FileText },
       { to: "/admin/receipts", label: "Payments & Receipts", icon: Wallet },
@@ -77,13 +78,28 @@ const NAV = [
   },
   {
     group: "Settings",
-    items: [{ to: "/admin/settings", label: "Company Profile", icon: Settings }],
+    adminOnly: true,
+    items: [
+      { to: "/admin/settings", label: "Company Profile", icon: Settings },
+      { to: "/admin/users", label: "Staff Logins", icon: Users },
+    ],
   },
+];
+
+const ADMIN_PATHS = [
+  "/admin/ledger",
+  "/admin/receipts",
+  "/admin/credit-notes",
+  "/admin/invoices",
+  "/admin/reports",
+  "/admin/settings",
+  "/admin/users",
 ];
 
 const AdminLayout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
 
   if (user === null)
@@ -93,6 +109,10 @@ const AdminLayout = () => {
       </div>
     );
   if (user === false) return <Navigate to="/login" replace />;
+
+  const isAdmin = user?.role === "admin";
+  const nav = NAV.filter((g) => isAdmin || !g.adminOnly);
+  const blocked = !isAdmin && ADMIN_PATHS.some((p) => location.pathname.startsWith(p));
 
   const sidebar = (
     <nav className="flex h-full flex-col bg-[#14261D] text-white/90">
@@ -106,7 +126,7 @@ const AdminLayout = () => {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        {NAV.map((g) => (
+        {nav.map((g) => (
           <div key={g.group} className="mb-5">
             <p className="px-2 pb-2 text-[10px] uppercase tracking-[0.18em] text-white/35">{g.group}</p>
             {g.items.map((it) => (
@@ -130,6 +150,7 @@ const AdminLayout = () => {
       </div>
       <div className="border-t border-white/10 px-4 py-3">
         <p className="truncate text-xs text-white/50">{user?.email}</p>
+        <p className="text-[10px] uppercase tracking-widest text-accent">{isAdmin ? "Admin" : "Operator"}</p>
         <button
           data-testid="logout-btn"
           onClick={async () => {
@@ -170,7 +191,27 @@ const AdminLayout = () => {
           >
             <ChevronLeft className="h-3 w-3" /> Back to website
           </Link>
-          <Outlet />
+          {blocked ? (
+            <div
+              data-testid="access-restricted"
+              className="border border-border bg-white p-12 text-center"
+            >
+              <h1 className="font-head text-2xl font-extrabold">Access restricted</h1>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Accounts, invoices, reports and settings are available to admin users only. Ask your administrator
+                if you need access.
+              </p>
+              <Link
+                to="/admin/dashboard"
+                className="mt-6 inline-block border border-border px-4 py-2 text-sm transition-colors duration-200 hover:border-primary hover:text-primary"
+                data-testid="restricted-back-btn"
+              >
+                Back to dashboard
+              </Link>
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </div>
       </main>
     </div>

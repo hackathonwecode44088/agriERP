@@ -2,7 +2,7 @@ import { useParams } from "react-router-dom";
 import CrudPage from "@/components/CrudPage";
 import { money } from "@/lib/api";
 import { nameOf } from "@/components/Shell";
-import { CATEGORY_META, PAYMENT_MODES, PAYMENT_TYPES, RATE_BASIS } from "@/lib/constants";
+import { CATEGORY_META, GST_RATES, PAYMENT_MODES, PAYMENT_TYPES, RATE_BASIS } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 
 const Sales = () => {
@@ -21,6 +21,8 @@ const Sales = () => {
       query={{ category }}
       defaults={{ category, party_type: meta.buyer === "farmers" ? "farmer" : "company" }}
       computeAmount
+      gst
+      rateAlert={{ kind: "sales" }}
       soft={false}
       searchKeys={["invoice_no", "lot_no", "vehicle_no"]}
       fields={[
@@ -34,6 +36,7 @@ const Sales = () => {
         { name: "weight", label: "Weight (kg)", type: "number" },
         { name: "rate_basis", label: "Rate Basis", type: "select", options: RATE_BASIS, default: "bag" },
         { name: "rate", label: "Rate", type: "number" },
+        { name: "gst_rate", label: "GST Rate", type: "select", options: GST_RATES, default: "0" },
         { name: "payment_type", label: "Type", type: "select", options: PAYMENT_TYPES, default: "cash" },
         { name: "payment_mode", label: "Payment Mode", type: "select", options: PAYMENT_MODES, default: "cash" },
         { name: "cheque_no", label: "Cheque / Ref No." },
@@ -48,7 +51,14 @@ const Sales = () => {
         { key: "bags", label: "Bags", align: "right" },
         { key: "weight", label: "Weight", align: "right" },
         { key: "rate", label: "Rate", align: "right" },
-        { key: "amount", label: "Amount", align: "right", render: (r) => money(r.amount) },
+        { key: "amount", label: "Taxable", align: "right", render: (r) => money(r.amount) },
+        { key: "gst_rate", label: "GST %", align: "right", render: (r) => `${Number(r.gst_rate || 0)}%` },
+        {
+          key: "total_amount",
+          label: "Invoice Total",
+          align: "right",
+          render: (r) => money(r.total_amount ?? r.amount),
+        },
         { key: "payment_mode", label: "Mode" },
         {
           key: "payment_type",

@@ -43,15 +43,20 @@ Spec: Website Module (landing page with company info) + Admin Module with Login,
 - **Lot Traceability** (`/admin/lots`): expandable lot cards joining each potato purchase with its company sales by lot no., showing sold/balance bags and gross margin
 - Verified by testing agent: backend 36/36, frontend all new-feature + regression checks passed
 
+## Implemented — Iteration 3 (2026-06)
+- **GST breakup**: sale entry takes a GST rate (0/5/12/18/28); backend stores taxable amount, CGST, SGST and GST-inclusive total; shown in the entry preview, sales/invoice tables and on the invoice PDF
+- **Staff logins & roles**: admin-only `/admin/users` CRUD (create/edit role/reset password, self-demotion and self-delete blocked); roles `admin` and `operator`; operators see only entry screens — Accounts/Settings nav hidden, restricted routes show an "Access restricted" panel, and 8 backend endpoint groups enforce 403 via a `require_admin` dependency; dashboard hides farmer balance for operators
+- **Rate alerts**: `/api/rate-stats` returns avg/min/max/last rate over the last 20 entries per product; purchase and sale dialogs warn when the entered rate deviates more than 20% from the recent average
+- Verified by testing agent: backend 65/65 (29 new + 36 regression), all frontend iteration-3 flows passed
+
 ## Backlog
 - P1: Validate `party_id` / `product_id` references on purchase & sale creation
 - P1: Auto-settle company outstanding when a potato sale is recorded as already paid on the invoice
-- P2: Multi-user roles (accountant/operator), GST tax breakup on invoices
-- P2: GSTIN/email format validation on Company Profile
-- P2: DialogDescription for Radix a11y warning
+- P2: Make the 20% rate-alert threshold configurable in Company Profile
+- P2: GSTIN/email format validation on Company Profile; DialogDescription for Radix a11y warning
 - P3: Lot trace edge case — purchases with a blank lot no. group under "(no lot)"
 
 ## Next Tasks
-1. GST tax breakup on sale invoices
-2. Operator/accountant roles with restricted screens
-3. Reference validation on purchase/sale entry
+1. Configurable rate-alert threshold
+2. Reference validation on purchase/sale entry
+3. Sharing farmer statements outside the app (WhatsApp/email)

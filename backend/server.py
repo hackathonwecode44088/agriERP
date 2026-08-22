@@ -15,9 +15,11 @@ from core import (
     create_access_token,
     db,
     get_current_user,
+    hash_password,
     next_number,
     now_iso,
     oid,
+    require_admin,
     seed_admin,
     ser,
     verify_password,
@@ -92,7 +94,7 @@ async def get_profile():
     return doc
 
 
-@api.put("/company-profile")
+@api.put("/company-profile", dependencies=[Depends(require_admin)])
 async def put_profile(payload: dict = Body(...), user: dict = Depends(get_current_user)):
     payload.pop("_id", None)
     await db.settings.update_one({"_id": "company"}, {"$set": payload}, upsert=True)
@@ -182,7 +184,7 @@ async def sync_ledger(ref_type: str, ref_id: str, farmer_id: Optional[str], date
 
 TXN_FIELDS = [
     "category", "date", "party_type", "party_id", "product_id", "godown_id",
-    "lot_no", "vehicle_no", "bags", "weight", "rate", "rate_basis",
+    "lot_no", "vehicle_no", "bags", "weight", "rate", "rate_basis", "gst_rate",
     "payment_type", "payment_mode", "cheque_no", "notes", "status",
 ]
 
@@ -197,9 +199,99 @@ def clean_txn(payload: dict) -> dict:
     doc["rate_basis"] = basis
     qty = doc["weight"] if basis == "weight" else doc["bags"]
     doc["amount"] = round(qty * doc["rate"], 2)
+    gst = num(doc.get("gst_rate"))
+    doc["gst_rate"] = gst
+    doc["cgst"] = round(doc["amount"] * gst / 200, 2)
+    doc["sgst"] = round(doc["amount"] * gst / 200, 2)
+    doc["total_amount"] = round(doc["amount"] + doc["cgst"] + doc["sgst"], 2)
     doc.setdefault("status", "active")
     doc.setdefault("payment_type", "cash")
     return doc
+
+
+@api.get("/rate-stats")
+async def rate_stats(
+    kind: str = "sales",
+    product_id: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    if kind not in ("sales", "purchases"):
+        raise HTTPException(status_code=400, detail="kind must be sales or purchases")
+    if not product_id:
+        return {"count": 0}
+    docs = await db[kind].find({"product_id": product_id}).sort("created_at", -1).to_list(20)
+    rates = [num(d.get("rate")) for d in docs if num(d.get("rate")) > 0]
+    if not rates:
+        return {"count": 0}
+    return {
+        "count": len(rates),
+        "avg_rate": round(sum(rates) / len(rates), 2),
+        "min_rate": round(min(rates), 2),
+        "max_rate": round(max(rates), 2),
+        "last_rate": round(rates[0], 2),
+    }
+
+
+# ---------------------------------------------------------------- staff users (admin only)
+@api.get("/users")
+async def list_users(user: dict = Depends(require_admin)):
+    docs = await db.users.find({}).sort("created_at", 1).to_list(500)
+    return [ser(d) for d in docs]
+
+
+@api.post("/users")
+async def create_user(payload: dict = Body(...), user: dict = Depends(require_admin)):
+    email = str(payload.get("email", "")).strip().lower()
+    password = str(payload.get("password", ""))
+    role = payload.get("role") or "operator"
+    if role not in ("admin", "operator"):
+        raise HTTPException(status_code=400, detail="Role must be admin or operator")
+    if not email or len(password) < 6:
+        raise HTTPException(status_code=400, detail="Email and a password of 6+ characters are required")
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="A user with this email already exists")
+    doc = {
+        "email": email,
+        "name": payload.get("name") or email.split("@")[0],
+        "role": role,
+        "password_hash": hash_password(password),
+        "created_at": now_iso(),
+    }
+    res = await db.users.insert_one(doc)
+    return ser(await db.users.find_one({"_id": res.inserted_id}))
+
+
+@api.put("/users/{item_id}")
+async def update_user(item_id: str, payload: dict = Body(...), user: dict = Depends(require_admin)):
+    existing = await db.users.find_one({"_id": oid(item_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Record not found")
+    update = {}
+    if payload.get("name"):
+        update["name"] = payload["name"]
+    if payload.get("role"):
+        if payload["role"] not in ("admin", "operator"):
+            raise HTTPException(status_code=400, detail="Role must be admin or operator")
+        if item_id == user["id"] and payload["role"] != "admin":
+            raise HTTPException(status_code=400, detail="You cannot remove your own admin access")
+        update["role"] = payload["role"]
+    if payload.get("password"):
+        if len(str(payload["password"])) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        update["password_hash"] = hash_password(str(payload["password"]))
+    if update:
+        await db.users.update_one({"_id": oid(item_id)}, {"$set": update})
+    return ser(await db.users.find_one({"_id": oid(item_id)}))
+
+
+@api.delete("/users/{item_id}")
+async def delete_user(item_id: str, user: dict = Depends(require_admin)):
+    if item_id == user["id"]:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+    res = await db.users.delete_one({"_id": oid(item_id)})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Record not found")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- purchases
@@ -298,13 +390,13 @@ async def delete_sale(item_id: str, user: dict = Depends(get_current_user)):
 CN_FIELDS = ["date", "party_type", "party_id", "against_invoice", "amount", "reason", "category", "status"]
 
 
-@api.get("/credit-notes")
+@api.get("/credit-notes", dependencies=[Depends(require_admin)])
 async def list_credit_notes(user: dict = Depends(get_current_user)):
     docs = await db.credit_notes.find({}).sort("date", -1).to_list(5000)
     return [ser(d) for d in docs]
 
 
-@api.post("/credit-notes")
+@api.post("/credit-notes", dependencies=[Depends(require_admin)])
 async def create_credit_note(payload: dict = Body(...), user: dict = Depends(get_current_user)):
     doc = {k: v for k, v in payload.items() if k in CN_FIELDS}
     doc["amount"] = num(doc.get("amount"))
@@ -319,7 +411,7 @@ async def create_credit_note(payload: dict = Body(...), user: dict = Depends(get
     return ser(await db.credit_notes.find_one({"_id": res.inserted_id}))
 
 
-@api.put("/credit-notes/{item_id}")
+@api.put("/credit-notes/{item_id}", dependencies=[Depends(require_admin)])
 async def update_credit_note(item_id: str, payload: dict = Body(...), user: dict = Depends(get_current_user)):
     doc = {k: v for k, v in payload.items() if k in CN_FIELDS}
     doc["amount"] = num(doc.get("amount"))
@@ -335,7 +427,7 @@ async def update_credit_note(item_id: str, payload: dict = Body(...), user: dict
     return ser(await db.credit_notes.find_one({"_id": oid(item_id)}))
 
 
-@api.delete("/credit-notes/{item_id}")
+@api.delete("/credit-notes/{item_id}", dependencies=[Depends(require_admin)])
 async def delete_credit_note(item_id: str, user: dict = Depends(get_current_user)):
     res = await db.credit_notes.delete_one({"_id": oid(item_id)})
     if res.deleted_count == 0:
@@ -372,14 +464,14 @@ async def apply_receipt_ledger(receipt_id: str, doc: dict):
     )
 
 
-@api.get("/receipts")
+@api.get("/receipts", dependencies=[Depends(require_admin)])
 async def list_receipts(party_type: Optional[str] = None, user: dict = Depends(get_current_user)):
     q = {"party_type": party_type} if party_type else {}
     docs = await db.receipts.find(q).sort("date", -1).to_list(5000)
     return [ser(d) for d in docs]
 
 
-@api.post("/receipts")
+@api.post("/receipts", dependencies=[Depends(require_admin)])
 async def create_receipt(payload: dict = Body(...), user: dict = Depends(get_current_user)):
     doc = {k: v for k, v in payload.items() if k in RECEIPT_FIELDS}
     doc["amount"] = num(doc.get("amount"))
@@ -393,7 +485,7 @@ async def create_receipt(payload: dict = Body(...), user: dict = Depends(get_cur
     return ser(await db.receipts.find_one({"_id": res.inserted_id}))
 
 
-@api.put("/receipts/{item_id}")
+@api.put("/receipts/{item_id}", dependencies=[Depends(require_admin)])
 async def update_receipt(item_id: str, payload: dict = Body(...), user: dict = Depends(get_current_user)):
     existing = await db.receipts.find_one({"_id": oid(item_id)})
     if not existing:
@@ -406,7 +498,7 @@ async def update_receipt(item_id: str, payload: dict = Body(...), user: dict = D
     return ser(await db.receipts.find_one({"_id": oid(item_id)}))
 
 
-@api.delete("/receipts/{item_id}")
+@api.delete("/receipts/{item_id}", dependencies=[Depends(require_admin)])
 async def delete_receipt(item_id: str, user: dict = Depends(get_current_user)):
     res = await db.receipts.delete_one({"_id": oid(item_id)})
     if res.deleted_count == 0:
@@ -415,7 +507,7 @@ async def delete_receipt(item_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-@api.get("/outstanding")
+@api.get("/outstanding", dependencies=[Depends(require_admin)])
 async def outstanding(user: dict = Depends(get_current_user)):
     farmers = await db.farmers.find({}).to_list(5000)
     companies = await db.companies.find({}).to_list(5000)
@@ -521,7 +613,7 @@ async def lot_trace(user: dict = Depends(get_current_user)):
 LEDGER_FIELDS = ["farmer_id", "date", "particulars", "debit", "credit", "payment_mode", "notes"]
 
 
-@api.get("/ledger")
+@api.get("/ledger", dependencies=[Depends(require_admin)])
 async def get_ledger(farmer_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     q = {"farmer_id": farmer_id} if farmer_id else {}
     docs = await db.ledger.find(q).sort("date", 1).to_list(5000)
@@ -539,7 +631,7 @@ async def get_ledger(farmer_id: Optional[str] = None, user: dict = Depends(get_c
     }
 
 
-@api.post("/ledger")
+@api.post("/ledger", dependencies=[Depends(require_admin)])
 async def create_ledger(payload: dict = Body(...), user: dict = Depends(get_current_user)):
     doc = {k: v for k, v in payload.items() if k in LEDGER_FIELDS}
     if not doc.get("farmer_id"):
@@ -552,7 +644,7 @@ async def create_ledger(payload: dict = Body(...), user: dict = Depends(get_curr
     return ser(await db.ledger.find_one({"_id": res.inserted_id}))
 
 
-@api.put("/ledger/{item_id}")
+@api.put("/ledger/{item_id}", dependencies=[Depends(require_admin)])
 async def update_ledger(item_id: str, payload: dict = Body(...), user: dict = Depends(get_current_user)):
     existing = await db.ledger.find_one({"_id": oid(item_id)})
     if not existing:
@@ -566,7 +658,7 @@ async def update_ledger(item_id: str, payload: dict = Body(...), user: dict = De
     return ser(await db.ledger.find_one({"_id": oid(item_id)}))
 
 
-@api.delete("/ledger/{item_id}")
+@api.delete("/ledger/{item_id}", dependencies=[Depends(require_admin)])
 async def delete_ledger(item_id: str, user: dict = Depends(get_current_user)):
     existing = await db.ledger.find_one({"_id": oid(item_id)})
     if not existing:
@@ -670,6 +762,8 @@ async def dashboard(user: dict = Depends(get_current_user)):
 
     ledger = await db.ledger.find({}).to_list(10000)
     receivable = round(sum(num(l.get("debit")) - num(l.get("credit")) for l in ledger), 2)
+    if user.get("role") != "admin":
+        receivable = None
 
     counts = {}
     for coll in ("vendors", "farmers", "companies", "godowns", "products"):
@@ -687,7 +781,7 @@ async def dashboard(user: dict = Depends(get_current_user)):
     }
 
 
-@api.get("/reports/transactions")
+@api.get("/reports/transactions", dependencies=[Depends(require_admin)])
 async def report_transactions(
     kind: str = "sales",
     category: Optional[str] = None,
@@ -721,7 +815,7 @@ async def report_transactions(
     }
 
 
-@api.get("/invoices")
+@api.get("/invoices", dependencies=[Depends(require_admin)])
 async def invoices(kind: Optional[str] = None, user: dict = Depends(get_current_user)):
     rows = []
     if kind in (None, "sale"):

@@ -21,6 +21,7 @@ const Purchases = () => {
       query={{ category }}
       defaults={{ category, party_type: category === "potato" ? "farmer" : "vendor" }}
       computeAmount
+      rateAlert={{ kind: "purchases" }}
       soft={false}
       searchKeys={["invoice_no", "lot_no", "vehicle_no"]}
       fields={[

@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 3 (GST breakup, Staff Logins, Rate Alerts) fully verified. Backend: 29/29 new tests in test_iteration3.py pass (GST 18%: taxable 1000, cgst 90, sgst 90, total 1180; GST 0% -> total==amount; rate-stats OK; duplicate email / short password / invalid role rejected; edit-role & reset-password work; admin cannot delete self (400); operator gets 403 on /ledger, /receipts, /credit-notes, /invoices, /reports/transactions, /outstanding, /users and PUT /company-profile; operator gets 200 on /vendors, /farmers, /products, /purchases, /sales, /stock/{seeds|lenobag|potato}, /lots/trace, /dashboard/summary; dashboard.farmer_balance is null for operator; operator can CRUD farmer/product/purchase/sale). Regression backend 36/36 (backend_test.py + test_iteration2.py) still passes -> 65/65 total. Frontend: admin login -> /admin/dashboard OK. Sales/seeds Add dialog shows sales-seeds-amount-preview ₹1,000.00, cgst ₹90.00, sgst ₹90.00, total ₹1,180.00 with 10 bags @100 GST 18%. Rate alert: sales-seeds-rate-alert appears at rate 200 quoting recent avg ₹100 (range 95-105); disappears at rate 105. Invoices list page contains GST columns. Users page: users-add-btn visible and self-delete button is disabled for the logged-in admin (data-testid users-delete-<id> present with disabled attribute). Operator login: sidebar shows OPERATOR label, Accounts and Settings nav groups hidden, direct navigation to /admin/reports, /admin/ledger, /admin/receipts, /admin/credit-notes, /admin/invoices, /admin/settings, /admin/users all render data-testid access-restricted. Regression pages (dashboard, vendors, farmers, products, ledger, receipts, settings) all load without console errors. Logout returns to /login.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iteration3_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py clean_txn() forces gst on both purchases and sales (correct per spec). Rate stats uses last 20 records by created_at; if a product was recently mass-imported all-at-once with an outlier, avg could shift — acceptable for warning-only UX.",
+    "core.py require_admin returns 403 only via dependency; make sure the same protection is applied if new admin-only endpoints are added later (currently 8 endpoints protected).",
+    "Users.jsx: self-delete correctly disabled but there is no confirmation dialog for delete on other users - consider adding a confirm-delete step to prevent accidental staff removal.",
+    "Rate alert threshold (20%) is hard-coded in CrudPage.jsx; could be moved to company-profile settings later.",
+    "Sales.jsx GST Rate is a fixed enum select (0/5/12/18/28). For sale to farmer where GST may not apply, 0% is default — good. Purchases page correctly omits the GST field but backend still accepts gst_rate=0 (documented in note)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/test_reports/iteration_3.json"
+  ],
+  "success_rate": {"backend": "100% (29/29 iteration3 + 36/36 regression)", "frontend": "100% of iteration 3 flows verified"},
+  "test_credentials": "admin@potatoerp.com / Admin@123 ; operator@potatoerp.com / Operator@123",
+  "seed_data_creation": "test_iteration3.py creates one temporary user (TEST_it3_<ts>@x.com) for edit/reset-password checks and cleans it up. Rate-stats test adds 3 sales at rates 100/105/95 for the existing 'GST Test Seed' seed product - these are left in DB (they build the >=3 record baseline the UI rate alert relies on) and are matched by the previous handoff note.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All iteration-3 features (GST, Users/Roles, Rate Alerts) pass on backend + frontend. Sales dialog testids follow pattern data-testid=\"sales-<category>-field-<name>\" (e.g. sales-seeds-field-bags, -rate, -gst_rate, -product_id) and the GST/total previews are sales-<category>-{amount|cgst|sgst|total}-preview. Rate alert testid is sales-<category>-rate-alert and purchases-<category>-rate-alert. Users page testids: users-add-btn, users-delete-<id>, users-edit-<id>, users-field-<name|email|role|password>, users-save-btn. Radix Select still needs ~500ms after click before options are safe to click. Operator token is required to hit protected /api routes with 403 - use /api/auth/login with the operator credentials."
+}

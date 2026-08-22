@@ -21,6 +21,7 @@ import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 import Receipts from "@/pages/Receipts";
 import LotTrace from "@/pages/LotTrace";
+import Users from "@/pages/Users";
 
 function App() {
   return (
@@ -48,6 +49,7 @@ function App() {
               <Route path="receipts" element={<Receipts />} />
               <Route path="lots" element={<LotTrace />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="users" element={<Users />} />
             </Route>
           </Routes>
           <Toaster position="top-right" richColors />
