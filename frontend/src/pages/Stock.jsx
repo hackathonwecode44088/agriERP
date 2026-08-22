@@ -1,31 +1,38 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { FileSpreadsheet, Package, Warehouse, Boxes } from "lucide-react";
 import api, { money, numFmt } from "@/lib/api";
 import { DataTable, PageHeader, StatCard } from "@/components/Shell";
-import { CATEGORY_META } from "@/lib/constants";
 import { downloadExcel, mapRows } from "@/lib/excel";
 import { Button } from "@/components/ui/button";
-import { FileSpreadsheet, Package, Warehouse, Boxes } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Stock = () => {
-  const { category } = useParams();
-  const meta = CATEGORY_META[category] || { label: category };
+  const [categories, setCategories] = useState([]);
+  const [categoryId, setCategoryId] = useState("all");
   const [data, setData] = useState(null);
 
   useEffect(() => {
+    api.get("/product-categories").then(({ data }) => setCategories(data)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     setData(null);
-    api.get(`/stock/${category}`).then(({ data }) => setData(data)).catch(() => setData({ products: [], godowns: [], lots: [] }));
-  }, [category]);
+    api
+      .get("/stock", { params: categoryId === "all" ? {} : { category_id: categoryId } })
+      .then(({ data }) => setData(data))
+      .catch(() => setData({ products: [], godowns: [], lots: [] }));
+  }, [categoryId]);
 
   const products = data?.products || [];
   const totalIn = products.reduce((s, r) => s + r.in_bags, 0);
   const totalOut = products.reduce((s, r) => s + r.out_bags, 0);
 
   return (
-    <div data-testid={`stock-${category}-page`}>
+    <div data-testid="stock-page">
       <PageHeader
-        title={`${meta.label} Stock`}
-        subtitle="Live balance from purchases, sales and opening stock."
+        title="Stock"
+        subtitle="Live balance from purchases, sales and opening stock across every category."
         action={
           <Button
             variant="outline"
@@ -34,12 +41,13 @@ const Stock = () => {
             data-testid="stock-excel-btn"
             onClick={() =>
               downloadExcel({
-                filename: `stock-${category}`,
+                filename: "stock",
                 sheets: [
                   {
                     name: "Products",
                     rows: mapRows(products, [
                       { label: "Product", value: (r) => r.product },
+                      { label: "Category", value: (r) => r.category },
                       { label: "Variety", value: (r) => r.variety },
                       { label: "In Bags", value: (r) => r.in_bags },
                       { label: "Out Bags", value: (r) => r.out_bags },
@@ -60,6 +68,23 @@ const Stock = () => {
         }
       />
 
+      <div className="mb-6 w-56">
+        <Label className="text-xs">Category</Label>
+        <Select value={categoryId} onValueChange={setCategoryId}>
+          <SelectTrigger data-testid="stock-category-filter" className="mt-1 bg-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-white">
+            <SelectItem value="all">All Categories</SelectItem>
+            {categories.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard testid="stock-in" label="Total In (Bags)" icon={Boxes} value={numFmt(totalIn.toFixed(2))} />
         <StatCard testid="stock-out" label="Total Out (Bags)" icon={Package} value={numFmt(totalOut.toFixed(2))} />
@@ -78,6 +103,7 @@ const Stock = () => {
         rows={products}
         columns={[
           { key: "product", label: "Product" },
+          { key: "category", label: "Category" },
           { key: "variety", label: "Variety" },
           { key: "in_bags", label: "In Bags", align: "right" },
           { key: "out_bags", label: "Out Bags", align: "right" },
@@ -101,13 +127,13 @@ const Stock = () => {
         ]}
       />
 
-      {category === "potato" && (
+      {(data?.lots || []).length > 0 && (
         <>
           <h2 className="font-head mb-3 mt-8 text-base font-extrabold md:text-lg">Lot-wise Stock</h2>
           <DataTable
             testid="stock-lots"
             loading={!data}
-            rows={data?.lots || []}
+            rows={data.lots}
             columns={[
               { key: "lot_no", label: "Lot No." },
               { key: "vehicle_no", label: "Vehicle" },

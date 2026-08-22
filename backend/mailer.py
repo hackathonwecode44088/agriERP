@@ -111,7 +111,25 @@ async def send_email(*, to: str, subject: str, html: str, reply_to: str | None =
         raise HTTPException(status_code=500, detail="Failed to send email")
 
 
-def statement_html(*, company_name: str, farmer_name: str, rows: list, totals: dict) -> str:
+def reminder_html(*, company_name: str, party_name: str, balance: float, as_of: str) -> str:
+    return (
+        "<table role='presentation' width='100%' style='font-family:Arial,sans-serif;color:#111'>"
+        "<tr><td style='padding:24px'>"
+        f"<h2 style='margin:0 0 4px'>{escape(company_name)}</h2>"
+        f"<p style='margin:0 0 18px;color:#555'>Hello {escape(party_name)}, this is a friendly reminder "
+        "about your account before the month closes.</p>"
+        "<table role='presentation' style='border-collapse:collapse;font-size:14px'>"
+        f"<tr><td style='padding:8px 12px;background:#f4f6f5'>Outstanding balance</td>"
+        f"<td style='padding:8px 12px;background:#f4f6f5'><strong>{balance:.2f}</strong></td></tr>"
+        f"<tr><td style='padding:8px 12px'>As of</td><td style='padding:8px 12px'>{escape(as_of)}</td></tr>"
+        "</table>"
+        "<p style='margin:18px 0 0;font-size:13px'>Please get in touch with the office to settle or discuss the "
+        "balance. A full statement is available on request.</p>"
+        f"<p style='margin-top:24px;font-size:12px;color:#888'>Sent by {escape(company_name)}. "
+        "We never ask for your password, PIN or bank details by email.</p>"
+        "</td></tr></table>"
+    )
+def statement_html(*, company_name: str, party_name: str, rows: list, totals: dict) -> str:
     tr = ""
     for r in rows:
         tr += (
@@ -130,7 +148,7 @@ def statement_html(*, company_name: str, farmer_name: str, rows: list, totals: d
         "<table role='presentation' width='100%' style='font-family:Arial,sans-serif;color:#111'>"
         "<tr><td style='padding:24px'>"
         f"<h2 style='margin:0 0 4px'>{escape(company_name)}</h2>"
-        f"<p style='margin:0 0 18px;color:#555'>Account statement for <strong>{escape(farmer_name)}</strong></p>"
+        f"<p style='margin:0 0 18px;color:#555'>Account statement for <strong>{escape(party_name)}</strong></p>"
         "<table role='presentation' width='100%' style='border-collapse:collapse;font-size:13px'>"
         "<tr style='background:#f4f6f5;text-align:left'>"
         "<th style='padding:8px'>Date</th><th style='padding:8px'>Particulars</th>"

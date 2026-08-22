@@ -5,17 +5,24 @@ import api, { errMsg, money } from "@/lib/api";
 import { DataTable, PageHeader, StatCard } from "@/components/Shell";
 import { downloadLedgerPdf } from "@/lib/pdf";
 import { downloadExcel, mapRows } from "@/lib/excel";
+import { roleLabel } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const blank = { date: new Date().toISOString().slice(0, 10), particulars: "", debit: "", credit: "", payment_mode: "cash" };
+const blank = {
+  date: new Date().toISOString().slice(0, 10),
+  particulars: "",
+  debit: "",
+  credit: "",
+  payment_mode: "cash",
+};
 
 const Ledger = () => {
-  const [farmers, setFarmers] = useState([]);
-  const [farmerId, setFarmerId] = useState("");
+  const [parties, setParties] = useState([]);
+  const [partyId, setPartyId] = useState("");
   const [data, setData] = useState(null);
   const [company, setCompany] = useState(null);
   const [open, setOpen] = useState(false);
@@ -23,28 +30,31 @@ const Ledger = () => {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    api.get("/farmers").then(({ data }) => setFarmers(data)).catch(() => {});
+    api.get("/parties").then(({ data }) => setParties(data)).catch(() => {});
     api.get("/company-profile").then(({ data }) => setCompany(data)).catch(() => {});
   }, []);
 
   const load = useCallback(() => {
-    if (!farmerId) {
+    if (!partyId) {
       setData(null);
       return;
     }
     api
-      .get("/ledger", { params: { farmer_id: farmerId } })
+      .get("/ledger", { params: { party_id: partyId } })
       .then(({ data }) => setData(data))
       .catch((e) => toast.error(errMsg(e)));
-  }, [farmerId]);
+  }, [partyId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  const party = parties.find((p) => p.id === partyId);
+  const partyName = party?.name || "";
+
   const save = async () => {
     try {
-      await api.post("/ledger", { ...form, farmer_id: farmerId });
+      await api.post("/ledger", { ...form, party_id: partyId });
       toast.success("Ledger entry added");
       setOpen(false);
       setForm(blank);
@@ -64,30 +74,27 @@ const Ledger = () => {
     }
   };
 
-  const farmerName = farmers.find((f) => f.id === farmerId)?.name || "";
-  const farmer = farmers.find((f) => f.id === farmerId);
-
   const shareWhatsapp = () => {
-    const t = data?.totals;
-    const lines = [
+    const t = data.totals;
+    const text = [
       `${company?.name || "Potato ERP"} — Account statement`,
-      `Farmer: ${farmerName}`,
+      `Party: ${partyName}`,
       `Total debit: ${t.debit}`,
       `Total credit: ${t.credit}`,
       `Closing balance: ${t.balance}`,
       `Entries: ${data.entries.length}`,
     ].join("\n");
-    const phone = String(farmer?.phone || "").replace(/\D/g, "");
+    const phone = String(party?.phone || "").replace(/\D/g, "");
     const url = phone
-      ? `https://wa.me/${phone.length === 10 ? "91" + phone : phone}?text=${encodeURIComponent(lines)}`
-      : `https://wa.me/?text=${encodeURIComponent(lines)}`;
+      ? `https://wa.me/${phone.length === 10 ? "91" + phone : phone}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank", "noopener");
   };
 
   const emailStatement = async () => {
     setSending(true);
     try {
-      const { data: res } = await api.post(`/ledger/${farmerId}/email-statement`);
+      const { data: res } = await api.post(`/ledger/${partyId}/email-statement`);
       toast.success(`Statement emailed to ${res.sent_to}`);
     } catch (e) {
       toast.error(errMsg(e));
@@ -99,8 +106,8 @@ const Ledger = () => {
   return (
     <div data-testid="ledger-page">
       <PageHeader
-        title="Farmer Ledger"
-        subtitle="Running account of every farmer — sales are debits, potato purchases and credit notes are credits."
+        title="Party Ledger"
+        subtitle="One running account per party — sales and payments out are debits, purchases, receipts and credit notes are credits."
         action={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -128,7 +135,7 @@ const Ledger = () => {
               className="gap-2"
               onClick={() =>
                 downloadExcel({
-                  filename: `ledger-${farmerName || "farmer"}`,
+                  filename: `ledger-${partyName || "party"}`,
                   sheets: [
                     {
                       name: "Ledger",
@@ -154,12 +161,12 @@ const Ledger = () => {
               data-testid="ledger-pdf-btn"
               className="gap-2"
               onClick={() =>
-                downloadLedgerPdf({ farmerName, entries: data.entries, totals: data.totals, company })
+                downloadLedgerPdf({ farmerName: partyName, entries: data.entries, totals: data.totals, company })
               }
             >
               <Download className="h-4 w-4" /> PDF
             </Button>
-            <Button disabled={!farmerId} data-testid="ledger-add-btn" className="gap-2" onClick={() => setOpen(true)}>
+            <Button disabled={!partyId} data-testid="ledger-add-btn" className="gap-2" onClick={() => setOpen(true)}>
               <Plus className="h-4 w-4" /> Add Entry
             </Button>
           </div>
@@ -167,15 +174,15 @@ const Ledger = () => {
       />
 
       <div className="mb-6 max-w-sm">
-        <Label className="text-xs">Select Farmer</Label>
-        <Select value={farmerId} onValueChange={setFarmerId}>
-          <SelectTrigger data-testid="ledger-farmer-select" className="mt-1 bg-white">
-            <SelectValue placeholder="Choose a farmer" />
+        <Label className="text-xs">Select Party</Label>
+        <Select value={partyId} onValueChange={setPartyId}>
+          <SelectTrigger data-testid="ledger-party-select" className="mt-1 bg-white">
+            <SelectValue placeholder="Choose a party" />
           </SelectTrigger>
           <SelectContent className="bg-white">
-            {farmers.map((f) => (
-              <SelectItem key={f.id} value={f.id}>
-                {f.name} {f.village ? `(${f.village})` : ""}
+            {parties.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name} {p.roles?.length ? `· ${p.roles.map(roleLabel).join(", ")}` : ""}
               </SelectItem>
             ))}
           </SelectContent>
@@ -190,7 +197,7 @@ const Ledger = () => {
             testid="ledger-balance"
             label="Closing Balance"
             value={money(data.totals.balance)}
-            sub={data.totals.balance >= 0 ? "Receivable from farmer" : "Payable to farmer"}
+            sub={data.totals.balance >= 0 ? "Receivable from party" : "Payable to party"}
           />
         </div>
       )}
@@ -227,7 +234,7 @@ const Ledger = () => {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg bg-white">
           <DialogHeader>
-            <DialogTitle className="font-head">Add Ledger Entry — {farmerName}</DialogTitle>
+            <DialogTitle className="font-head">Add Ledger Entry — {partyName}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -263,7 +270,7 @@ const Ledger = () => {
               />
             </div>
             <div>
-              <Label className="text-xs">Debit (farmer owes)</Label>
+              <Label className="text-xs">Debit (party owes)</Label>
               <Input
                 data-testid="ledger-field-debit"
                 type="number"
@@ -273,7 +280,7 @@ const Ledger = () => {
               />
             </div>
             <div>
-              <Label className="text-xs">Credit (paid / adjusted)</Label>
+              <Label className="text-xs">Credit (you owe / received)</Label>
               <Input
                 data-testid="ledger-field-credit"
                 type="number"

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, BarChart3 } from "lucide-react";
+import { AlertTriangle, BarChart3, PackagePlus } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -69,6 +69,75 @@ export const SeasonChart = () => {
   );
 };
 
+export const ReorderPanel = () => {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    api.get("/dashboard/reorder").then(({ data }) => setData(data)).catch(() => {});
+  }, []);
+
+  if (!data || data.rows.length === 0) return null;
+
+  return (
+    <div className="mt-8" data-testid="reorder-panel">
+      <h2 className="font-head mb-3 flex items-center gap-2 text-base font-extrabold md:text-lg">
+        <PackagePlus className="h-4 w-4 text-secondary" /> Reorder Suggestions
+      </h2>
+      <div className="overflow-x-auto border border-border bg-white">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead>
+            <tr className="border-b border-border bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
+              <th className="px-3 py-2.5 text-left">Product</th>
+              <th className="px-3 py-2.5 text-right">Sold this season</th>
+              <th className="px-3 py-2.5 text-right">Avg / month</th>
+              <th className="px-3 py-2.5 text-right">In stock</th>
+              <th className="px-3 py-2.5 text-right">Cover</th>
+              <th className="px-3 py-2.5 text-right">Buy next</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((r) => (
+              <tr
+                key={r.product_id}
+                data-testid={`reorder-row-${r.product_id}`}
+                className="border-b border-border/70 last:border-0"
+              >
+                <td className="px-3 py-2.5">
+                  {r.product} <span className="text-xs text-muted-foreground">· {r.category}</span>
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums">{numFmt(r.season_sold_bags)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">{numFmt(r.avg_monthly_bags)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">{numFmt(r.balance_bags)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {r.cover_months === null ? "—" : `${r.cover_months} mo`}
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  {r.suggested_bags > 0 ? (
+                    <Badge
+                      className={`rounded-full ${
+                        r.urgency === "now"
+                          ? "bg-destructive/10 text-destructive hover:bg-destructive/10"
+                          : "bg-accent/25 text-accent-foreground hover:bg-accent/25"
+                      }`}
+                    >
+                      {numFmt(r.suggested_bags)} bags {r.urgency === "now" ? "now" : "soon"}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">stocked</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Based on {data.months_elapsed} month(s) of selling since {data.season_from}; target is two months of cover.
+      </p>
+    </div>
+  );
+};
+
 export const LowStockPanel = () => {
   const [data, setData] = useState(null);
 
@@ -123,8 +192,7 @@ export const LowStockPanel = () => {
         </div>
         <div className="border border-border bg-white">
           <p className="border-b border-border px-4 py-2.5 text-xs uppercase tracking-widest text-muted-foreground">
-            Potato lots nearly cleared
-          </p>
+            Lots nearly cleared</p>
           <ul>
             {data.lots.length === 0 && (
               <li className="px-4 py-6 text-center text-sm text-muted-foreground">No lots running low.</li>

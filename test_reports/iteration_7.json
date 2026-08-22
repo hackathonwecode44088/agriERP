@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration 7 (unified parties/categories/products) end-to-end verified. Wrote fresh /app/backend/tests/test_iteration7.py (42 tests) covering auth, parties (multi-role, no-role 400, role filter), categories (seeded Seeds/Leno Bag/Potato, create/edit/delete, delete-with-products 400), products (category required + filter), the dual-role party purchase+sale=-360 ledger flow, oversell 400, /outstanding universal receivable/payable/net, manual vs auto ledger entries, partial payments on sale AND purchase invoices, stock+lots by category with supplier/buyer naming, dashboard summary/seasons/season-chart/low-stock/reorder, operator role restrictions (200 on masters+stock+lots, 403 on ledger/receipts/credit-notes/invoices/reports/outstanding/users/cron/runs and PUT /company-profile, receivable/payable null), obsolete /api/farmers|vendors|companies -> 404, and cron endpoints (401 without secret, 200 with, idempotent via X-Webhook-Id, /cron/runs listed). All 42 pass in 9s. Deleted obsolete backend_test.py + test_iteration2..6.py which targeted the old farmer/vendor/company model. Frontend smoke test with Playwright confirmed all pages load, all requested data-testids exist (parties-filter-role, parties-roles-farmer/vendor/customer, products-filter-category_id, purchases/sales-filter-category_id/party_id, stock-category-filter, lots-category-filter, ledger-party-select), receipts page shows Receivable/Payable cards, admin dashboard shows real ₹100 receivable / ₹360 payable, operator dashboard hides both with 'Admin only' placeholders, sidebar hides admin-only items for operator, and operator hitting /admin/ledger sees 'Access restricted'. Manual party 'Ramesh Dual' shows in ledger with the expected -360 netting from PUR-00001 (1200 credit) + INV-00001 (800 debit).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration7.py",
+    "/app/test_reports/pytest/iteration7.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 1200 lines — mostly OK because of the register_master/register_txn factories, but ledger/receipts/credit-notes/dashboard/cron blocks could be split into a routers/ package for maintainability.",
+    "DEFAULT_CATEGORIES seed only inserts when the collection is empty; if an admin deletes all three, they will never be re-seeded — consider upserting each by name so it's self-healing.",
+    "sync_txn_ledger writes a *_payment ledger row for every purchase/sale, but rows with debit=0 AND credit=0 are already suppressed inside sync_ledger — good, but the label 'Payment for INV-… (cash)' still gets computed for cash sales where payment_status defaults to paid, which is fine; just note that changing a paid cash sale back to unpaid should be tested by the main agent.",
+    "outstanding endpoint iterates parties+ledger in Python; for larger data an aggregation pipeline would scale better, but fine for MVP.",
+    "email_statement uses the historical HTML template with parameter name farmer_name — works but the label should be renamed to party_name for clarity now that parties are unified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration7.py (new)",
+    "deleted: /app/backend/tests/backend_test.py + test_iteration2..6.py (obsolete)"
+  ],
+  "success_rate": {"backend": "100% (42/42)", "frontend": "100% smoke (all key testids + role gating verified)"},
+  "test_credentials": "admin@potatoerp.com / Admin@123 · operator@potatoerp.com / Operator@123 · CRON secret in /app/backend/.env",
+  "seed_data_creation": "Test fixtures create their own TEST_-prefixed parties/categories/products and clean up. The pre-existing 'Ramesh Dual' party + PUR-00001 + INV-00001 remained untouched and were used to visually verify the dual-role ledger.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test file is /app/backend/tests/test_iteration7.py — run with `python -m pytest backend/tests/test_iteration7.py -n 0`. The pytest.ini forces -n 2 --dist loadscope, use -n 0 for serial. Fixtures are session-scoped and rely on the seeded categories + operator user (auto-created on first run). All 42 tests are green.",
+  "rca of the issue": "N/A — no failures."
+}

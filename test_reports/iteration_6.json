@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 6 (Partial Payments, Schedule History, Reorder Suggestions, Statement Reminders) verified end-to-end. Backend: 13/13 new pytest tests in test_iteration6.py PASS -- (a) POST /api/sales/{id}/payments: admin-only (operator 403), 404 for unknown sale id, 400 for amount<=0, partial 400 on 1000 invoice returns payment_status='partial' with paid_amount=400/balance=600, subsequent 600 flips to 'paid' with balance=0, over-pay returns 400 naming the outstanding; (b) GET /api/invoices sale rows carry paid_amount+balance_amount (purchases unaffected); (c) /api/outstanding: seeded a company sale of 1000, partial-paid 400 (allocated receipt), then flagged payment_status=paid via full PUT -- sale_paid_amount uses max(allocated,total), so received=1000, balance=0 (no double count); (d) Farmer partial payment posts a 250 credit into farmer ledger; (e) /api/dashboard/reorder returns season_from/months_elapsed/rows, seeded product with no sales this season is excluded, rows contain season_sold_bags/avg_monthly_bags/balance_bags/cover_months/suggested_bags/urgency in {now,soon,ok}; (f) /api/cron/balance-reminders 401 without or wrong Bearer, 2xx with correct WEBHOOK_CRON_SECRET, duplicate X-Webhook-Id returns duplicate:true, GET /api/cron/runs shows the finished run with status=done, sent/skipped and recipients (each with name/email/balance); (g) /app/.emergent/crons.yml has exactly two crons: monthly-statements '30 3 1 * *' + balance-reminders '30 3 23 * *', both POST {{BASE_URL}} endpoints, enabled, no forbidden fields. Frontend: admin login OK; /admin/dashboard shows reorder-panel with 21 reorder-row-* entries; /admin/schedule-history lists 7 runs, Recipients expands schedule-recipients table, Refresh reloads; /admin/invoices has 19 Payment buttons on outstanding sale rows, the invoice-pay-amount/date/mode/ref dialog opens, invoice-pay-save posts and closes with 'Payment recorded' toast; operator visiting /admin/schedule-history sees the 'Access restricted' page (matches ADMIN_PATHS gating). Only two innocuous a11y warnings ('Missing Description on DialogContent') were seen -- non-blocking.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Invoice Payment dialog", "issues": ["DialogContent missing aria-describedby / Description (Radix a11y warning) -- purely accessibility polish, not blocking"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/pytest/iteration6_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "sale_paid_amount() uses max(allocated, total) when payment_status=='paid' -- correctly prevents double counting when a sale is both flagged paid AND has allocated receipts. Good.",
+    "add_sale_payment() validates against sum of all receipts on that invoice_no (already), then rounds paid vs total to decide paid/partial -- solid. However when invoice_no is empty string, sale_paid_amount treats allocated=0 (guarded by 'invoice_no' truthy check). Recommend forcing invoice_no to be always populated on sale insert to avoid silent skew.",
+    "run_balance_reminders skips farmers with no email OR balance<=0 -- matches spec. Reminders are silently counted as 'skipped' if send_email throws -- same 'observability' comment from iter 5 applies (splitting skipped into no_email/no_balance/failed would help).",
+    "/api/dashboard/reorder recomputes stocked/sold across ALL sales (not season-scoped) for balance -- correct for physical inventory. avg_monthly_bags uses season_sold/months_elapsed with min months_elapsed=1 -- fair. suggested = max(monthly*2 - balance, 0) with 2-month cover target -- reasonable and matches request.",
+    "server.py is now 1343 lines -- past the split guideline. Still recommended to split into routers/{sales,ledger,dashboard,cron,invoices}.py.",
+    "Invoices.jsx openPayment() prefills amount with row.balance_amount which is convenient but the dialog does not zero-clamp on manual entry -- rely on backend 400 for over-pay (already tested)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/pytest/iteration6_results.xml",
+    "/app/test_reports/iteration_6.json"
+  ],
+  "success_rate": {"backend": "100% (13/13 iteration6 new)", "frontend": "100% of iteration-6 flows verified"},
+  "test_credentials": "admin@potatoerp.com / Admin@123 ; operator@potatoerp.com / Operator@123 ; WEBHOOK_CRON_SECRET from /app/backend/.env",
+  "seed_data_creation": "test_iteration6.py creates several TEST_it6_* products/farmers/companies + purchases + sales and does NOT delete them (matches iter 5 style). Also one cron_runs row per fresh X-Webhook-Id is left behind (needed to prove idempotency + verify recipients). All test invoices are prefixed TEST-IT6-INV-*. If desired, main agent can clean via a one-off script filtering by TEST_it6_ / TEST-IT6- prefixes.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 6 all pass. New endpoints: POST /api/sales/{id}/payments (admin, creates allocated receipt on sale.invoice_no + farmer ledger credit, updates sale.payment_status paid|partial, returns {ok, receipt, paid_amount, balance, payment_status}); GET /api/dashboard/reorder (public to auth users) returns {season_from,'YYYY-11-01', months_elapsed, rows:[{product_id,product,category,season_sold_bags,avg_monthly_bags,balance_bags,cover_months,suggested_bags,urgency}]}; POST /api/cron/balance-reminders (Bearer WEBHOOK_CRON_SECRET, idempotent via X-Webhook-Id, BackgroundTasks run_balance_reminders emails farmers with email+balance>0). GET /api/cron/runs now includes recipients:[{name,email,balance}]. /api/invoices sale rows now carry paid_amount + balance_amount. Frontend testids: reorder-panel, reorder-row-<pid>, schedule-history-page, schedule-view-<run_id>, schedule-recipients, schedule-refresh-btn, invoice-pay-<sale_id>, invoice-pay-amount/date/mode/ref/save/cancel. Operator gated out of /admin/schedule-history via ADMIN_PATHS. crons.yml has TWO crons now (monthly-statements + balance-reminders). Still run pytest with -o addopts=\"\" to bypass xdist loadscope races on shared company_profile.",
+  "rca of the issue": "N/A -- no bugs found. Two initial test failures were self-inflicted (wrong API assumptions): (1) PUT /api/sales requires the full document (clean_txn enforces category), fixed by fetching the sale first and merging payment_status; (2) GET /api/ledger returns {entries, totals}, not a bare list -- fixed by reading data.entries."
+}

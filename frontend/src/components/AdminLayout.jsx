@@ -2,19 +2,18 @@ import { useState } from "react";
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
-  Building2,
+  CalendarClock,
   ChevronLeft,
   FileText,
   Gauge,
+  Layers,
   LogOut,
   Menu,
   Package,
   ReceiptText,
-  Route,
+  Route as RouteIcon,
   Settings,
   Sprout,
-  Store,
-  Tractor,
   Truck,
   Users,
   Wallet,
@@ -22,54 +21,32 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { Button } from "@/components/ui/button";
 
 const NAV = [
+  { group: "Overview", items: [{ to: "/admin/dashboard", label: "Dashboard", icon: Gauge }] },
   {
-    group: "Overview",
-    items: [{ to: "/admin/dashboard", label: "Dashboard", icon: Gauge }],
-  },  {
     group: "Masters",
     items: [
-      { to: "/admin/vendors", label: "Vendors", icon: Store },
-      { to: "/admin/farmers", label: "Farmers", icon: Tractor },
-      { to: "/admin/companies", label: "Companies", icon: Building2 },
+      { to: "/admin/parties", label: "Parties", icon: Users },
+      { to: "/admin/categories", label: "Product Categories", icon: Layers },
+      { to: "/admin/products", label: "Products", icon: Package },
       { to: "/admin/godowns", label: "Godown / Cold Storage", icon: Warehouse },
     ],
   },
   {
-    group: "Seeds",
+    group: "Trading",
     items: [
-      { to: "/admin/products/seeds", label: "Products", icon: Sprout },
-      { to: "/admin/purchases/seeds", label: "Purchase", icon: Truck },
-      { to: "/admin/sales/seeds", label: "Sell to Farmer", icon: ReceiptText },
-      { to: "/admin/stock/seeds", label: "Stock", icon: Package },
-    ],
-  },
-  {
-    group: "Leno Bag",
-    items: [
-      { to: "/admin/products/lenobag", label: "Products", icon: Package },
-      { to: "/admin/purchases/lenobag", label: "Purchase", icon: Truck },
-      { to: "/admin/sales/lenobag", label: "Sell to Farmer", icon: ReceiptText },
-      { to: "/admin/stock/lenobag", label: "Stock", icon: Package },
-    ],
-  },
-  {
-    group: "Potato",
-    items: [
-      { to: "/admin/products/potato", label: "Products", icon: Sprout },
-      { to: "/admin/purchases/potato", label: "Purchase from Farmer", icon: Truck },
-      { to: "/admin/sales/potato", label: "Sell to Company", icon: ReceiptText },
-      { to: "/admin/stock/potato", label: "Stock", icon: Package },
-      { to: "/admin/lots", label: "Lot Traceability", icon: Route },
+      { to: "/admin/purchases", label: "Purchases", icon: Truck },
+      { to: "/admin/sales", label: "Sales", icon: ReceiptText },
+      { to: "/admin/stock", label: "Stock", icon: Sprout },
+      { to: "/admin/lots", label: "Lot Traceability", icon: RouteIcon },
     ],
   },
   {
     group: "Accounts",
     adminOnly: true,
     items: [
-      { to: "/admin/ledger", label: "Farmer Ledger", icon: FileText },
+      { to: "/admin/ledger", label: "Party Ledger", icon: FileText },
       { to: "/admin/receipts", label: "Payments & Receipts", icon: Wallet },
       { to: "/admin/credit-notes", label: "Credit Notes", icon: ReceiptText },
       { to: "/admin/invoices", label: "Invoices", icon: FileText },
@@ -82,6 +59,7 @@ const NAV = [
     items: [
       { to: "/admin/settings", label: "Company Profile", icon: Settings },
       { to: "/admin/users", label: "Staff Logins", icon: Users },
+      { to: "/admin/schedule-history", label: "Schedule History", icon: CalendarClock },
     ],
   },
 ];
@@ -94,6 +72,7 @@ const ADMIN_PATHS = [
   "/admin/reports",
   "/admin/settings",
   "/admin/users",
+  "/admin/schedule-history",
 ];
 
 const AdminLayout = () => {
@@ -192,10 +171,7 @@ const AdminLayout = () => {
             <ChevronLeft className="h-3 w-3" /> Back to website
           </Link>
           {blocked ? (
-            <div
-              data-testid="access-restricted"
-              className="border border-border bg-white p-12 text-center"
-            >
+            <div data-testid="access-restricted" className="border border-border bg-white p-12 text-center">
               <h1 className="font-head text-2xl font-extrabold">Access restricted</h1>
               <p className="mt-3 text-sm text-muted-foreground">
                 Accounts, invoices, reports and settings are available to admin users only. Ask your administrator

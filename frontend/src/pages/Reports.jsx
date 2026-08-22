@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download, Filter, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet, Filter } from "lucide-react";
 import api, { money, numFmt } from "@/lib/api";
 import { DataTable, PageHeader, StatCard } from "@/components/Shell";
 import { downloadReportPdf } from "@/lib/pdf";
@@ -11,49 +11,50 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const Reports = () => {
   const [kind, setKind] = useState("sales");
-  const [category, setCategory] = useState("all");
+  const [categoryId, setCategoryId] = useState("all");
   const [partyId, setPartyId] = useState("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [data, setData] = useState(null);
   const [parties, setParties] = useState([]);
+  const [categories, setCategories] = useState([]);
 
   useEffect(() => {
-    Promise.all([api.get("/farmers"), api.get("/companies"), api.get("/vendors")]).then(([f, c, v]) =>
-      setParties([...f.data, ...c.data, ...v.data])
-    );
+    api.get("/parties").then(({ data }) => setParties(data)).catch(() => {});
+    api.get("/product-categories").then(({ data }) => setCategories(data)).catch(() => {});
   }, []);
 
   const run = useCallback(() => {
     const params = { kind };
-    if (category !== "all") params.category = category;
+    if (categoryId !== "all") params.category_id = categoryId;
     if (partyId !== "all") params.party_id = partyId;
     if (from) params.date_from = from;
     if (to) params.date_to = to;
     api.get("/reports/transactions", { params }).then(({ data }) => setData(data));
-  }, [kind, category, partyId, from, to]);
+  }, [kind, categoryId, partyId, from, to]);
 
   useEffect(() => {
     run();
   }, [run]);
 
   const nameOfParty = (id) => parties.find((p) => p.id === id)?.name || "-";
+  const nameOfCategory = (id) => categories.find((c) => c.id === id)?.name || "-";
+  const title = `${kind === "sales" ? "Sales" : "Purchases"} Report`;
 
-  const reportColumns = [
+  const columns = [
     { label: "No.", value: (r) => r.invoice_no },
     { label: "Date", value: (r) => r.date },
-    { label: "Category", value: (r) => r.category },
+    { label: "Category", value: (r) => nameOfCategory(r.category_id) },
     { label: "Party", value: (r) => nameOfParty(r.party_id) },
     { label: "Lot", value: (r) => r.lot_no },
-    { label: "Vehicle", value: (r) => r.vehicle_no },
     { label: "Bags", value: (r) => r.bags },
     { label: "Weight", value: (r) => r.weight },
     { label: "Rate", value: (r) => r.rate },
-    { label: "Amount", value: (r) => r.amount },
+    { label: "Taxable", value: (r) => r.amount },
+    { label: "Total", value: (r) => r.total_amount ?? r.amount },
     { label: "Type", value: (r) => r.payment_type },
-    { label: "Mode", value: (r) => r.payment_mode },
+    { label: "Status", value: (r) => r.payment_status },
   ];
-  const reportTitle = `${kind === "sales" ? "Sales" : "Purchases"} Report`;
 
   return (
     <div data-testid="reports-page">
@@ -69,20 +70,10 @@ const Reports = () => {
               data-testid="reports-excel-btn"
               onClick={() =>
                 downloadExcel({
-                  filename: reportTitle.replace(/\s+/g, "-").toLowerCase(),
+                  filename: title.replace(/\s+/g, "-").toLowerCase(),
                   sheets: [
-                    { name: reportTitle, rows: mapRows(data.rows, reportColumns) },
-                    {
-                      name: "Totals",
-                      rows: [
-                        {
-                          Records: data.totals.count,
-                          Bags: data.totals.bags,
-                          Weight: data.totals.weight,
-                          Amount: data.totals.amount,
-                        },
-                      ],
-                    },
+                    { name: title, rows: mapRows(data.rows, columns) },
+                    { name: "Totals", rows: [data.totals] },
                   ],
                 })
               }
@@ -95,12 +86,7 @@ const Reports = () => {
               disabled={!data}
               data-testid="reports-pdf-btn"
               onClick={() =>
-                downloadReportPdf({
-                  title: reportTitle,
-                  rows: data.rows,
-                  totals: data.totals,
-                  columns: reportColumns.slice(0, 8),
-                })
+                downloadReportPdf({ title, rows: data.rows, totals: data.totals, columns: columns.slice(0, 8) })
               }
             >
               <Download className="h-4 w-4" /> PDF
@@ -124,15 +110,17 @@ const Reports = () => {
         </div>
         <div>
           <Label className="text-xs">Category</Label>
-          <Select value={category} onValueChange={setCategory}>
+          <Select value={categoryId} onValueChange={setCategoryId}>
             <SelectTrigger data-testid="reports-category" className="mt-1">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-white">
               <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="seeds">Seeds</SelectItem>
-              <SelectItem value="lenobag">Leno Bag</SelectItem>
-              <SelectItem value="potato">Potato</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -181,15 +169,15 @@ const Reports = () => {
         columns={[
           { key: "invoice_no", label: "No." },
           { key: "date", label: "Date" },
-          { key: "category", label: "Category" },
+          { key: "category_id", label: "Category", render: (r) => nameOfCategory(r.category_id) },
           { key: "party_id", label: "Party", render: (r) => nameOfParty(r.party_id) },
           { key: "lot_no", label: "Lot No." },
-          { key: "vehicle_no", label: "Vehicle" },
           { key: "bags", label: "Bags", align: "right" },
           { key: "weight", label: "Weight", align: "right" },
           { key: "rate", label: "Rate", align: "right" },
-          { key: "amount", label: "Amount", align: "right", render: (r) => money(r.amount) },
-          { key: "payment_type", label: "Type" },
+          { key: "amount", label: "Taxable", align: "right", render: (r) => money(r.amount) },
+          { key: "total_amount", label: "Total", align: "right", render: (r) => money(r.total_amount ?? r.amount) },
+          { key: "payment_status", label: "Status" },
         ]}
       />
     </div>

@@ -6,24 +6,33 @@ import { downloadExcel, mapRows } from "@/lib/excel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const LotTrace = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState({});
   const [term, setTerm] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [categoryId, setCategoryId] = useState("all");
 
   useEffect(() => {
+    api.get("/product-categories").then(({ data }) => setCategories(data)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
     api
-      .get("/lots/trace")
+      .get("/lots/trace", { params: categoryId === "all" ? {} : { category_id: categoryId } })
       .then(({ data }) => setRows(data))
       .finally(() => setLoading(false));
-  }, []);
+  }, [categoryId]);
 
   const filtered = rows.filter((r) =>
     !term
       ? true
-      : [r.lot_no, r.farmer, r.vehicle_no, r.godown].some((v) =>
+      : [r.lot_no, r.supplier, r.vehicle_no, r.godown].some((v) =>
           String(v || "").toLowerCase().includes(term.toLowerCase())
         )
   );
@@ -41,7 +50,7 @@ const LotTrace = () => {
     <div data-testid="lot-trace-page">
       <PageHeader
         title="Lot Traceability"
-        subtitle="Follow every potato lot from the farmer purchase through to company sales."
+        subtitle="Follow every lot from the purchase through to each onward sale."
         action={
           <Button
             variant="outline"
@@ -57,7 +66,7 @@ const LotTrace = () => {
                       { label: "Lot No.", value: (r) => r.lot_no },
                       { label: "Purchase No.", value: (r) => r.purchase_no },
                       { label: "Purchase Date", value: (r) => r.purchase_date },
-                      { label: "Farmer", value: (r) => r.farmer },
+                      { label: "Farmer", value: (r) => r.supplier },
                       { label: "Product", value: (r) => r.product },
                       { label: "Godown", value: (r) => r.godown },
                       { label: "Vehicle", value: (r) => r.vehicle_no },
@@ -77,7 +86,7 @@ const LotTrace = () => {
                         "Lot No.": r.lot_no,
                         Invoice: s.invoice_no,
                         Date: s.date,
-                        Company: s.company,
+                        Buyer: s.buyer,
                         Bags: s.bags,
                         Weight: s.weight,
                         Amount: s.amount,
@@ -100,21 +109,39 @@ const LotTrace = () => {
         <StatCard testid="lots-margin" label="Gross Margin" value={money(totals.margin)} />
       </div>
 
-      <div className="relative mb-4 w-full max-w-xs">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          data-testid="lots-search"
-          className="bg-white pl-8"
-          placeholder="Search lot, farmer, vehicle..."
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-        />
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <div className="w-48">
+          <Label className="text-xs">Category</Label>
+          <Select value={categoryId} onValueChange={setCategoryId}>
+            <SelectTrigger data-testid="lots-category-filter" className="mt-1 bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-white">
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="relative w-full max-w-xs">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            data-testid="lots-search"
+            className="bg-white pl-8"
+            placeholder="Search lot, party, vehicle..."
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+          />
+        </div>
       </div>
 
       {loading && <p className="text-sm text-muted-foreground">Loading lots...</p>}
       {!loading && filtered.length === 0 && (
         <p data-testid="lots-empty" className="border border-border bg-white p-10 text-center text-sm text-muted-foreground">
-          No potato purchase lots recorded yet.
+          No lots recorded yet. Lot tracking turns on for categories flagged "Track Lot / Vehicle".
         </p>
       )}
 
@@ -134,7 +161,7 @@ const LotTrace = () => {
                   <div>
                     <p className="font-head text-sm font-extrabold">Lot {r.lot_no}</p>
                     <p className="text-xs text-muted-foreground">
-                      {r.purchase_date} · {r.farmer} · {r.godown} · Vehicle {r.vehicle_no || "-"}
+                      {r.purchase_date} · {r.supplier} · {r.godown} · Vehicle {r.vehicle_no || "-"}
                     </p>
                   </div>
                 </div>
@@ -187,7 +214,7 @@ const LotTrace = () => {
                       <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
                         <th className="py-2 text-left">Invoice</th>
                         <th className="py-2 text-left">Date</th>
-                        <th className="py-2 text-left">Company</th>
+                        <th className="py-2 text-left">Buyer</th>
                         <th className="py-2 text-right">Bags</th>
                         <th className="py-2 text-right">Weight</th>
                         <th className="py-2 text-right">Amount</th>
@@ -206,7 +233,7 @@ const LotTrace = () => {
                         <tr key={s.invoice_no} className="border-b border-border/60 last:border-0">
                           <td className="py-2">{s.invoice_no}</td>
                           <td className="py-2">{s.date}</td>
-                          <td className="py-2">{s.company}</td>
+                          <td className="py-2">{s.buyer}</td>
                           <td className="py-2 text-right">{numFmt(s.bags)}</td>
                           <td className="py-2 text-right">{numFmt(s.weight)}</td>
                           <td className="py-2 text-right">{money(s.amount)}</td>

@@ -46,7 +46,14 @@ export const CrudPage = ({
   rateAlert = null,
   searchKeys = ["name"],
   onChanged,
+  filters = [],
 }) => {
+  const [filterVals, setFilterVals] = useState(
+    Object.fromEntries(filters.map((f) => [f.name, "all"]))
+  );
+  const activeFilters = Object.fromEntries(
+    Object.entries(filterVals).filter(([, v]) => v && v !== "all")
+  );
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({});
   const [loading, setLoading] = useState(true);
@@ -59,25 +66,25 @@ export const CrudPage = ({
   const sources = useMemo(
     () => [
       ...new Set(
-        fields
+        [...fields, ...filters]
           .filter((f) => f.optionsFrom)
           .flatMap((f) => (Array.isArray(f.optionsFrom) ? f.optionsFrom : [f.optionsFrom]))
       ),
     ],
-    [fields]
+    [fields, filters]
   );
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get(`/${endpoint}`, { params: query });
+      const { data } = await api.get(`/${endpoint}`, { params: { ...query, ...activeFilters } });
       setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       toast.error(errMsg(e));
     } finally {
       setLoading(false);
     }
-  }, [endpoint, JSON.stringify(query)]); // eslint-disable-line
+  }, [endpoint, JSON.stringify(query), JSON.stringify(activeFilters)]); // eslint-disable-line
 
   useEffect(() => {
     load();
@@ -94,7 +101,7 @@ export const CrudPage = ({
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyFor(fields, defaults));
+    setForm({ ...emptyFor(fields, defaults), ...activeFilters });
     setOpen(true);
   };
 
@@ -102,7 +109,8 @@ export const CrudPage = ({
     setEditing(row);
     const f = emptyFor(fields, defaults);
     fields.forEach((fl) => {
-      if (row[fl.name] !== undefined && row[fl.name] !== null) f[fl.name] = String(row[fl.name]);
+      if (row[fl.name] === undefined || row[fl.name] === null) return;
+      f[fl.name] = fl.type === "multiselect" ? row[fl.name] : String(row[fl.name]);
     });
     setForm(f);
     setOpen(true);
@@ -197,17 +205,13 @@ export const CrudPage = ({
     return searchKeys.some((k) => String(r[k] ?? "").toLowerCase().includes(t));
   });
 
-  const optionsFor = (f) => {
+  const optionsFor = (f, values = form) => {
     if (f.options) return f.options;
     const srcs = Array.isArray(f.optionsFrom) ? f.optionsFrom : [f.optionsFrom];
     return srcs.flatMap((s) =>
-      (lookups[s] || []).map((x) => ({
-        value: x.id,
-        label:
-          x.name +
-          (x.village ? ` (${x.village})` : "") +
-          (srcs.length > 1 ? ` — ${s === "farmers" ? "Farmer" : "Company"}` : ""),
-      }))
+      (lookups[s] || [])
+        .filter((x) => !f.optionsFilterBy || !values?.[f.optionsFilterBy] || x[f.optionsFilterBy] === values[f.optionsFilterBy])
+        .map((x) => ({ value: x.id, label: x.name + (x.village ? ` (${x.village})` : "") }))
     );
   };
 
@@ -223,7 +227,28 @@ export const CrudPage = ({
         }
       />
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        {filters.map((f) => (
+          <div key={f.name} className="w-48">
+            <Label className="text-xs">{f.label}</Label>
+            <Select
+              value={filterVals[f.name]}
+              onValueChange={(v) => setFilterVals((s) => ({ ...s, [f.name]: v }))}
+            >
+              <SelectTrigger data-testid={`${testid}-filter-${f.name}`} className="mt-1 bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                <SelectItem value="all">{f.allLabel || `All ${f.label}`}</SelectItem>
+                {optionsFor(f, {}).map((o) => (
+                  <SelectItem key={o.value} value={String(o.value)}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
         <div className="relative w-full max-w-xs">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -234,7 +259,7 @@ export const CrudPage = ({
             onChange={(e) => setTerm(e.target.value)}
           />
         </div>
-        <span className="text-xs text-muted-foreground">{filtered.length} records</span>
+        <span className="pb-2 text-xs text-muted-foreground">{filtered.length} records</span>
       </div>
 
       <DataTable
@@ -305,6 +330,35 @@ export const CrudPage = ({
                       ))}
                     </SelectContent>
                   </Select>
+                ) : f.type === "multiselect" ? (
+                  <div className="mt-1 flex flex-wrap gap-2" data-testid={`${testid}-field-${f.name}`}>
+                    {optionsFor(f).map((o) => {
+                      const selected = (form[f.name] || []).includes(o.value);
+                      return (
+                        <button
+                          type="button"
+                          key={o.value}
+                          data-testid={`${testid}-${f.name}-${o.value}`}
+                          onClick={() =>
+                            setForm((s) => {
+                              const cur = s[f.name] || [];
+                              return {
+                                ...s,
+                                [f.name]: selected ? cur.filter((x) => x !== o.value) : [...cur, o.value],
+                              };
+                            })
+                          }
+                          className={`border px-3 py-1.5 text-sm transition-colors duration-200 ${
+                            selected
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:border-primary"
+                          }`}
+                        >
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 ) : f.type === "textarea" ? (
                   <Textarea
                     data-testid={`${testid}-field-${f.name}`}

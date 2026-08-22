@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import api, { money } from "@/lib/api";
 import CrudPage from "@/components/CrudPage";
 import { DataTable, StatCard } from "@/components/Shell";
-import { PAYMENT_MODES } from "@/lib/constants";
+import { PAYMENT_MODES, roleLabel } from "@/lib/constants";
+import { nameOf } from "@/components/Shell";
 import { Badge } from "@/components/ui/badge";
 
 const Receipts = () => {
@@ -15,29 +16,31 @@ const Receipts = () => {
 
   return (
     <div data-testid="receipts-page">
-      <div className="mb-8 grid gap-4 sm:grid-cols-2">
+      <div className="mb-8 grid gap-4 sm:grid-cols-3">
         <StatCard
-          testid="outstanding-farmers"
-          label="Net Farmer Balance"
-          value={money(out?.totals?.farmer_balance)}
-          sub="Positive = receivable from farmers"
+          testid="outstanding-receivable"
+          label="Total Receivable"
+          value={money(out?.totals?.receivable)}
+          sub="Parties who owe you"
         />
         <StatCard
-          testid="outstanding-companies"
-          label="Net Company Receivable"
-          value={money(out?.totals?.company_balance)}
-          sub="Billed minus payments received"
+          testid="outstanding-payable"
+          label="Total Payable"
+          value={money(out?.totals?.payable)}
+          sub="What you owe parties"
         />
+        <StatCard testid="outstanding-net" label="Net Position" value={money(out?.totals?.net)} />
       </div>
 
       <CrudPage
         testid="receipts"
         title="Payment Receipt"
-        subtitle="Money received from farmers/companies or paid out to farmers. Farmer entries settle the ledger automatically."
+        subtitle="Money received from or paid out to any party. Every entry posts to that party's ledger."
         endpoint="receipts"
         soft={false}
         onChanged={() => setTick((t) => t + 1)}
         searchKeys={["receipt_no", "against_invoice", "notes"]}
+        filters={[{ name: "party_id", label: "Party", allLabel: "All Parties", optionsFrom: "parties" }]}
         fields={[
           { name: "date", label: "Date", type: "date" },
           {
@@ -50,17 +53,7 @@ const Receipts = () => {
             ],
             default: "received",
           },
-          {
-            name: "party_type",
-            label: "Party Type",
-            type: "select",
-            options: [
-              { value: "farmer", label: "Farmer" },
-              { value: "company", label: "Company" },
-            ],
-            default: "farmer",
-          },
-          { name: "party_id", label: "Party", type: "select", optionsFrom: ["farmers", "companies"] },
+          { name: "party_id", label: "Party", type: "select", optionsFrom: "parties" },
           { name: "amount", label: "Amount", type: "number" },
           { name: "payment_mode", label: "Payment Mode", type: "select", options: PAYMENT_MODES, default: "cash" },
           { name: "cheque_no", label: "Cheque / Ref No." },
@@ -85,45 +78,37 @@ const Receipts = () => {
               </Badge>
             ),
           },
-          { key: "party_type", label: "Party Type" },
-          {
-            key: "party_id",
-            label: "Party",
-            render: (r, lk) =>
-              [...(lk.farmers || []), ...(lk.companies || [])].find((x) => x.id === r.party_id)?.name || "-",
-          },
+          { key: "party_id", label: "Party", render: (r, lk) => nameOf(lk.parties, r.party_id) },
           { key: "amount", label: "Amount", align: "right", render: (r) => money(r.amount) },
           { key: "payment_mode", label: "Mode" },
           { key: "against_invoice", label: "Against Invoice" },
         ]}
       />
 
-      <h2 className="font-head mb-3 mt-10 text-base font-extrabold md:text-lg">Farmer Outstanding</h2>
+      <h2 className="font-head mb-3 mt-10 text-base font-extrabold md:text-lg">Party Outstanding</h2>
       <DataTable
-        testid="outstanding-farmer-table"
-        rows={out?.farmers || []}
+        testid="outstanding-table"
+        rows={out?.parties || []}
         loading={!out}
         columns={[
-          { key: "name", label: "Farmer" },
+          { key: "name", label: "Party" },
+          { key: "roles", label: "Roles", render: (r) => (r.roles || []).map(roleLabel).join(", ") || "-" },
           { key: "village", label: "Village" },
           { key: "debit", label: "Debit", align: "right", render: (r) => money(r.debit) },
           { key: "credit", label: "Credit", align: "right", render: (r) => money(r.credit) },
-          { key: "balance", label: "Balance", align: "right", render: (r) => money(r.balance) },
+          {
+            key: "balance",
+            label: "Balance",
+            align: "right",
+            render: (r) => (
+              <span className={r.balance >= 0 ? "text-primary" : "text-destructive"}>{money(r.balance)}</span>
+            ),
+          },
         ]}
       />
-
-      <h2 className="font-head mb-3 mt-8 text-base font-extrabold md:text-lg">Company Outstanding</h2>
-      <DataTable
-        testid="outstanding-company-table"
-        rows={out?.companies || []}
-        loading={!out}
-        columns={[
-          { key: "name", label: "Company" },
-          { key: "billed", label: "Billed", align: "right", render: (r) => money(r.billed) },
-          { key: "received", label: "Received", align: "right", render: (r) => money(r.received) },
-          { key: "balance", label: "Balance", align: "right", render: (r) => money(r.balance) },
-        ]}
-      />
+      <p className="mt-2 text-xs text-muted-foreground">
+        Positive balance = party owes you. Negative = you owe the party.
+      </p>
     </div>
   );
 };
