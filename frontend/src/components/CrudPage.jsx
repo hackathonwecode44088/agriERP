@@ -156,6 +156,16 @@ export const CrudPage = ({
   const halfGst = (amount * gstRate) / 200;
 
   const [stats, setStats] = useState(null);
+  const [threshold, setThreshold] = useState(20);
+
+  useEffect(() => {
+    if (!rateAlert) return;
+    api
+      .get("/company-profile")
+      .then(({ data }) => setThreshold(Number(data.rate_alert_threshold) || 20))
+      .catch(() => {});
+  }, [rateAlert]);
+
   useEffect(() => {
     if (!rateAlert || !open || !form.product_id) {
       setStats(null);
@@ -171,7 +181,7 @@ export const CrudPage = ({
     const rate = Number(form.rate || 0);
     if (!stats || !rate || !stats.avg_rate) return null;
     const diff = ((rate - stats.avg_rate) / stats.avg_rate) * 100;
-    if (Math.abs(diff) < 20) return null;
+    if (Math.abs(diff) < threshold) return null;
     return {
       diff: diff.toFixed(1),
       avg: stats.avg_rate,
@@ -181,7 +191,6 @@ export const CrudPage = ({
       high: diff > 0,
     };
   }, [stats, form.rate]);
-
   const filtered = rows.filter((r) => {
     if (!term) return true;
     const t = term.toLowerCase();

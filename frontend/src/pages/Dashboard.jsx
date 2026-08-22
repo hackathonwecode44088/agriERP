@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Building2, Package, Sprout, Tractor, TrendingDown, TrendingUp, Wallet, Warehouse } from "lucide-react";
 import api, { money, numFmt } from "@/lib/api";
 import { PageHeader, StatCard, DataTable } from "@/components/Shell";
+import { SeasonComparison } from "@/components/SeasonComparison";
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
@@ -55,6 +56,8 @@ const Dashboard = () => {
         <StatCard testid="stat-companies" label="Companies" icon={Building2} value={numFmt(data?.counts?.companies)} />
         <StatCard testid="stat-godowns" label="Godowns" icon={Warehouse} value={numFmt(data?.counts?.godowns)} />
       </div>
+
+      <SeasonComparison />
 
       <div className="mt-8 grid gap-6 xl:grid-cols-2">
         <div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Download, FileSpreadsheet, Plus, Trash2 } from "lucide-react";
+import { Download, FileSpreadsheet, Mail, MessageCircle, Plus, Trash2 } from "lucide-react";
 import api, { errMsg, money } from "@/lib/api";
 import { DataTable, PageHeader, StatCard } from "@/components/Shell";
 import { downloadLedgerPdf } from "@/lib/pdf";
@@ -20,6 +20,7 @@ const Ledger = () => {
   const [company, setCompany] = useState(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(blank);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     api.get("/farmers").then(({ data }) => setFarmers(data)).catch(() => {});
@@ -64,6 +65,36 @@ const Ledger = () => {
   };
 
   const farmerName = farmers.find((f) => f.id === farmerId)?.name || "";
+  const farmer = farmers.find((f) => f.id === farmerId);
+
+  const shareWhatsapp = () => {
+    const t = data?.totals;
+    const lines = [
+      `${company?.name || "Potato ERP"} — Account statement`,
+      `Farmer: ${farmerName}`,
+      `Total debit: ${t.debit}`,
+      `Total credit: ${t.credit}`,
+      `Closing balance: ${t.balance}`,
+      `Entries: ${data.entries.length}`,
+    ].join("\n");
+    const phone = String(farmer?.phone || "").replace(/\D/g, "");
+    const url = phone
+      ? `https://wa.me/${phone.length === 10 ? "91" + phone : phone}?text=${encodeURIComponent(lines)}`
+      : `https://wa.me/?text=${encodeURIComponent(lines)}`;
+    window.open(url, "_blank", "noopener");
+  };
+
+  const emailStatement = async () => {
+    setSending(true);
+    try {
+      const { data: res } = await api.post(`/ledger/${farmerId}/email-statement`);
+      toast.success(`Statement emailed to ${res.sent_to}`);
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div data-testid="ledger-page">
@@ -71,7 +102,25 @@ const Ledger = () => {
         title="Farmer Ledger"
         subtitle="Running account of every farmer — sales are debits, potato purchases and credit notes are credits."
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={!data}
+              data-testid="ledger-whatsapp-btn"
+              className="gap-2"
+              onClick={shareWhatsapp}
+            >
+              <MessageCircle className="h-4 w-4" /> WhatsApp
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!data || sending}
+              data-testid="ledger-email-btn"
+              className="gap-2"
+              onClick={emailStatement}
+            >
+              <Mail className="h-4 w-4" /> {sending ? "Sending..." : "Email"}
+            </Button>
             <Button
               variant="outline"
               disabled={!data}

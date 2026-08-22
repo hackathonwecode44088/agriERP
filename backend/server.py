@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Response
@@ -24,6 +25,7 @@ from core import (
     ser,
     verify_password,
 )
+from mailer import send_email, statement_html
 
 app = FastAPI(title="Potato Management ERP")
 api = APIRouter(prefix="/api")
@@ -89,8 +91,10 @@ async def get_profile():
             "email": "info@potatoerp.com",
             "address": "APMC Yard, Deesa, Gujarat, India",
             "gstin": "24ABCDE1234F1Z5",
+            "rate_alert_threshold": 20,
         }
     doc.pop("_id", None)
+    doc.setdefault("rate_alert_threshold", 20)
     return doc
 
 
@@ -104,7 +108,7 @@ async def put_profile(payload: dict = Body(...), user: dict = Depends(get_curren
 # ---------------------------------------------------------------- generic masters
 MASTERS = {
     "vendors": ["name", "kind", "phone", "email", "gstin", "address", "city", "notes", "status"],
-    "farmers": ["name", "phone", "village", "address", "aadhaar", "bank_account", "ifsc", "notes", "status"],
+    "farmers": ["name", "phone", "email", "village", "address", "aadhaar", "bank_account", "ifsc", "notes", "status"],
     "companies": ["name", "phone", "email", "gstin", "address", "city", "contact_person", "notes", "status"],
     "godowns": ["name", "kind", "location", "capacity_bags", "manager", "phone", "notes", "status"],
     "products": ["category", "name", "variety", "unit", "hsn", "opening_qty", "notes", "status"],
@@ -340,6 +344,63 @@ async def delete_purchase(item_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+async def available_stock(category: str, product_id: str, lot_no: str = "", exclude_sale_id: str = "") -> float:
+    prod = await db.products.find_one({"_id": oid(product_id)}) if product_id else None
+    pq = {"category": category, "product_id": product_id}
+    sq = {"category": category, "product_id": product_id}
+    if lot_no:
+        pq["lot_no"] = lot_no
+        sq["lot_no"] = lot_no
+    purchased = sum(num(d.get("bags")) for d in await db.purchases.find(pq).to_list(5000))
+    sold = 0.0
+    for d in await db.sales.find(sq).to_list(5000):
+        if exclude_sale_id and str(d["_id"]) == exclude_sale_id:
+            continue
+        sold += num(d.get("bags"))
+    opening = num(prod.get("opening_qty")) if (prod and not lot_no) else 0.0
+    return round(purchased + opening - sold, 2)
+
+
+async def available_weight(category: str, product_id: str, exclude_sale_id: str = "") -> float:
+    q = {"category": category, "product_id": product_id}
+    purchased = sum(num(d.get("weight")) for d in await db.purchases.find(q).to_list(5000))
+    sold = sum(
+        num(d.get("weight"))
+        for d in await db.sales.find(q).to_list(5000)
+        if not (exclude_sale_id and str(d["_id"]) == exclude_sale_id)
+    )
+    return round(purchased - sold, 2)
+
+
+async def assert_sale_stock(doc: dict, exclude_sale_id: str = ""):
+    if not doc.get("product_id"):
+        return
+    if doc["bags"] <= 0:
+        if doc["weight"] > 0:
+            wt = await available_weight(doc["category"], doc["product_id"], exclude_sale_id)
+            if doc["weight"] > wt:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Only {max(wt, 0)} kg of this product are in stock. Reduce the weight or record a purchase first.",
+                )
+        return
+    available = await available_stock(doc["category"], doc["product_id"], "", exclude_sale_id)
+    if doc["bags"] > available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only {max(available, 0)} bags of this product are in stock. Reduce the quantity or record a purchase first.",
+        )
+    if doc.get("lot_no"):
+        lot_available = await available_stock(
+            doc["category"], doc["product_id"], doc["lot_no"], exclude_sale_id
+        )
+        if doc["bags"] > lot_available:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lot {doc['lot_no']} has only {max(lot_available, 0)} bags left.",
+            )
+
+
 # ---------------------------------------------------------------- sales
 @api.get("/sales")
 async def list_sales(category: Optional[str] = None, user: dict = Depends(get_current_user)):
@@ -351,6 +412,7 @@ async def list_sales(category: Optional[str] = None, user: dict = Depends(get_cu
 @api.post("/sales")
 async def create_sale(payload: dict = Body(...), user: dict = Depends(get_current_user)):
     doc = clean_txn(payload)
+    await assert_sale_stock(doc)
     doc["invoice_no"] = await next_number("INV")
     doc["created_at"] = now_iso()
     res = await db.sales.insert_one(doc)
@@ -368,6 +430,7 @@ async def update_sale(item_id: str, payload: dict = Body(...), user: dict = Depe
     existing = await db.sales.find_one({"_id": oid(item_id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Record not found")
+    await assert_sale_stock(doc, exclude_sale_id=item_id)
     await db.sales.update_one({"_id": oid(item_id)}, {"$set": doc})
     if doc.get("party_type") == "farmer" and doc.get("party_id"):
         await sync_ledger("sale", item_id, doc["party_id"], doc.get("date", ""),
@@ -779,6 +842,83 @@ async def dashboard(user: dict = Depends(get_current_user)):
         "recent_sales": recent_sales,
         "recent_purchases": recent_purchases,
     }
+
+
+@api.get("/dashboard/seasons")
+async def dashboard_seasons(user: dict = Depends(get_current_user)):
+    today = datetime.now(timezone.utc).date()
+    start_year = today.year if today.month >= 11 else today.year - 1
+
+    def season(y):
+        return {"label": f"{y}-{str(y + 1)[-2:]}", "from": f"{y}-11-01", "to": f"{y + 1}-10-31"}
+
+    async def totals(coll, s):
+        docs = await db[coll].find({"date": {"$gte": s["from"], "$lte": s["to"]}}).to_list(10000)
+        return {
+            "count": len(docs),
+            "bags": round(sum(num(d.get("bags")) for d in docs), 2),
+            "weight": round(sum(num(d.get("weight")) for d in docs), 2),
+            "amount": round(sum(num(d.get("amount")) for d in docs), 2),
+        }
+
+    out = []
+    for y in (start_year, start_year - 1):
+        s = season(y)
+        purchase = await totals("purchases", s)
+        sale = await totals("sales", s)
+        out.append(
+            {
+                "label": s["label"],
+                "from": s["from"],
+                "to": s["to"],
+                "purchase": purchase,
+                "sale": sale,
+                "margin": round(sale["amount"] - purchase["amount"], 2),
+            }
+        )
+
+    current, previous = out[0], out[1]
+
+    def growth(now, before):
+        if not before:
+            return None
+        return round(((now - before) / before) * 100, 1)
+
+    return {
+        "current": current,
+        "previous": previous,
+        "growth": {
+            "purchase_amount": growth(current["purchase"]["amount"], previous["purchase"]["amount"]),
+            "sale_amount": growth(current["sale"]["amount"], previous["sale"]["amount"]),
+            "margin": growth(current["margin"], previous["margin"]),
+            "purchase_bags": growth(current["purchase"]["bags"], previous["purchase"]["bags"]),
+        },
+    }
+
+
+@api.post("/ledger/{farmer_id}/email-statement", dependencies=[Depends(require_admin)])
+async def email_statement(farmer_id: str, user: dict = Depends(require_admin)):
+    farmer = await db.farmers.find_one({"_id": oid(farmer_id)})
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+    to = (farmer.get("email") or "").strip()
+    if not to or "@" not in to:
+        raise HTTPException(
+            status_code=400, detail="This farmer has no email address. Add one on the Farmer record first."
+        )
+    ledger = await get_ledger(farmer_id=farmer_id, user=user)
+    profile = await get_profile()
+    email_id = await send_email(
+        to=to,
+        subject=f"Your account statement from {profile.get('name', 'Potato ERP')}",
+        html=statement_html(
+            company_name=profile.get("name", "Potato ERP"),
+            farmer_name=farmer.get("name", ""),
+            rows=ledger["entries"],
+            totals=ledger["totals"],
+        ),
+    )
+    return {"ok": True, "sent_to": to, "email_id": email_id}
 
 
 @api.get("/reports/transactions", dependencies=[Depends(require_admin)])

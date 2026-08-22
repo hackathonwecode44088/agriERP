@@ -11,6 +11,7 @@ const Farmers = () => (
     fields={[
       { name: "name", label: "Farmer Name" },
       { name: "phone", label: "Phone" },
+      { name: "email", label: "Email (for statements)" },
       { name: "village", label: "Village" },
       { name: "aadhaar", label: "Aadhaar No." },
       { name: "bank_account", label: "Bank Account No." },
@@ -22,6 +23,7 @@ const Farmers = () => (
     columns={[
       { key: "name", label: "Name" },
       { key: "phone", label: "Phone" },
+      { key: "email", label: "Email" },
       { key: "village", label: "Village" },
       { key: "bank_account", label: "Bank A/c" },
       { key: "status", label: "Status", render: (r) => <StatusBadge status={r.status} /> },

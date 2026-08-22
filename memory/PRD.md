@@ -49,14 +49,22 @@ Spec: Website Module (landing page with company info) + Admin Module with Login,
 - **Rate alerts**: `/api/rate-stats` returns avg/min/max/last rate over the last 20 entries per product; purchase and sale dialogs warn when the entered rate deviates more than 20% from the recent average
 - Verified by testing agent: backend 65/65 (29 new + 36 regression), all frontend iteration-3 flows passed
 
+## Implemented — Iteration 4 (2026-06)
+- **Configurable rate-alert threshold**: `rate_alert_threshold` on the company profile (default 20%), edited in Company Profile and honoured by purchase/sale entry warnings
+- **Farmer statement sharing**: WhatsApp deep-link share of the statement summary and one-tap email of the full statement via the Emergent-managed Resend integration (`POST /api/ledger/{farmer_id}/email-statement`, admin-only, recipient from the farmer record, guardrail gate in `mailer.py`); farmers master gained an email field
+- **Season comparison**: `/api/dashboard/seasons` (season = 1 Nov – 31 Oct) with current vs previous purchases, sales, margin, bags and % change, shown on the dashboard
+- **Entry validation**: sales are blocked with a clear 400 when bags exceed product or lot availability (and kg when the sale is weight-based); edits exclude their own quantity from the check
+- Verified by testing agent: 12/12 new backend tests and all frontend flows passed (4 legacy iteration-2/3 tests now fail only because they created sales without purchases — test artefacts, not app bugs)
+
 ## Backlog
-- P1: Validate `party_id` / `product_id` references on purchase & sale creation
 - P1: Auto-settle company outstanding when a potato sale is recorded as already paid on the invoice
-- P2: Make the 20% rate-alert threshold configurable in Company Profile
+- P2: Refresh the rate threshold on entry screens without a page reload
+- P2: Show an error banner if the season-comparison widget fails to load
 - P2: GSTIN/email format validation on Company Profile; DialogDescription for Radix a11y warning
+- P3: Update legacy tests in test_iteration2/3 to seed a purchase before creating sales
 - P3: Lot trace edge case — purchases with a blank lot no. group under "(no lot)"
 
 ## Next Tasks
-1. Configurable rate-alert threshold
-2. Reference validation on purchase/sale entry
-3. Sharing farmer statements outside the app (WhatsApp/email)
+1. Payment status on invoices with auto-settlement
+2. Season-over-season charts on the dashboard
+3. Legacy test seed updates

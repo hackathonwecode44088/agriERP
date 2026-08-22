@@ -14,6 +14,7 @@ const FIELDS = [
   { name: "phone", label: "Phone" },
   { name: "email", label: "Email" },
   { name: "gstin", label: "GSTIN" },
+  { name: "rate_alert_threshold", label: "Rate Alert Threshold (%)" },
 ];
 
 const Settings = () => {
@@ -42,7 +43,7 @@ const Settings = () => {
     <div data-testid="settings-page">
       <PageHeader
         title="Company Profile"
-        subtitle="Shown on the public website, invoices, vouchers and ledger statements."
+        subtitle="Shown on the public website, invoices, vouchers and ledger statements. The rate alert threshold controls when entry screens warn about an unusual rate."
         action={
           <Button onClick={save} disabled={busy} className="gap-2" data-testid="settings-save-btn">
             <Save className="h-4 w-4" /> {busy ? "Saving..." : "Save Changes"}
