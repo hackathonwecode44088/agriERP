@@ -1,0 +1,134 @@
+{
+  "theme": "light",
+  "archetype": "ORGANIC & EARTHY (Marketing) + SWISS & HIGH-CONTRAST (ERP Dashboard)",
+  "typography": {
+    "marketing_headings": {
+      "font": "Playfair Display",
+      "weights": ["400", "700"],
+      "usage": "Landing page hero, section headers. Use 'tracking-tight' for large sizes."
+    },
+    "dashboard_headings": {
+      "font": "Manrope",
+      "weights": ["600", "800"],
+      "usage": "Dashboard module titles, stat card numbers, table headers."
+    },
+    "body": {
+      "font": "IBM Plex Sans",
+      "weights": ["400", "500"],
+      "usage": "All data tables, form inputs, body text, ledgers, and invoice details. Optimized for dense data."
+    },
+    "instructions": "Import all fonts via Google Fonts in index.css. Never use Inter or default generic sans-serif for headings."
+  },
+  "colors": {
+    "primary": {
+      "DEFAULT": "#2A5C43",
+      "foreground": "#FFFFFF",
+      "hover": "#1E4331",
+      "description": "Deep Forest Green for primary actions, sidebar active states, and marketing CTAs."
+    },
+    "secondary": {
+      "DEFAULT": "#C57B43",
+      "foreground": "#FFFFFF",
+      "hover": "#A66332",
+      "description": "Terracotta/Clay for secondary accents, warnings, or 'Credit' (ઉધાર) tags."
+    },
+    "accent": {
+      "DEFAULT": "#E8C16B",
+      "foreground": "#1F2937",
+      "description": "Warm Ochre for highlights, 'Cash' (રોકડા) tags, or pending statuses."
+    },
+    "background": {
+      "marketing": "#FDFBF7",
+      "dashboard": "#F9FAFB",
+      "surface": "#FFFFFF"
+    },
+    "text": {
+      "primary": "#111827",
+      "secondary": "#4B5563",
+      "muted": "#9CA3AF"
+    },
+    "border": "#E5E7EB"
+  },
+  "visual_enhancers": {
+    "surfaces": {
+      "marketing_cards": "Flat background, 1px subtle border (#E5E7EB), shadow-lg on hover.",
+      "dashboard_cards": "Solid white (#FFFFFF), strict 1px border, 0px radius (sharp) or max 4px radius. No shadow for static cards.",
+      "glassmorphism": "Use only for floating marketing nav: backdrop-blur-xl bg-white/80 border-b border-black/5."
+    },
+    "shadows": {
+      "ambient": "shadow-[0_4px_24px_rgba(0,0,0,0.04)]",
+      "interactive": "shadow-[0_8px_32px_rgba(0,0,0,0.08)]"
+    }
+  },
+  "grids_and_layouts": {
+    "marketing": {
+      "spacing": "Generous spacing. Use py-24 to py-32 for sections. Container px-6 md:px-12.",
+      "grid": "Bento Grid Protocol (Mode A) for features. Asymmetric spans (e.g., col-span-8 and col-span-4)."
+    },
+    "dashboard": {
+      "structure": "Collapsible left-sidebar (fixed width ~260px) + main content area.",
+      "spacing": "Dense. Use p-4 to p-6 for containers. Gap-4 for grids.",
+      "grid": "High Density Grid (Mode B). Top row: 3-4 summary metric cards. Below: Data tables taking full width."
+    }
+  },
+  "components": {
+    "forms": "Use Shadcn Form components. For Purchase/Sell, use grid layouts for line items (Lot No., Vehicle No., Bag, Weight) to maximize horizontal space.",
+    "tables": "Dense rows. Text sizes text-sm. Use sticky headers. Action buttons inside tables should be ghost or outline icons.",
+    "invoice": "Clean, monochrome print-friendly layout inside a card. Include a prominent 'Download PDF' button.",
+    "badges": "Use rounded-full px-2 py-1 text-xs for Statuses (Cash/Credit, Stock In/Out).",
+    "navigation": "Marketing page must have a sticky nav (backdrop-blur). Dashboard uses a persistent left sidebar."
+  },
+  "motion": {
+    "hover": "All interactive elements MUST have a hover state altering background color or opacity. e.g., hover:bg-gray-50.",
+    "transitions": "transition-colors duration-200 ease-in-out. Do not use 'transition-all' globally.",
+    "lists": "Staggered fade-in for table rows or dashboard cards on mount."
+  },
+  "accessibility": {
+    "contrast": "Text over hero images must use text-shadow or a gradient overlay (bg-black/40) for readability.",
+    "focus": "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1.",
+    "testing": "All interactive elements MUST include data-testid (e.g., data-testid='login-submit')."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.pexels.com/photos/31908568/pexels-photo-31908568.jpeg",
+      "category": "Marketing Hero Background",
+      "description": "Expansive green potato fields under cloudy skies. Ensure bg-black/40 overlay so text pops."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1561635741-c416a5193b6e",
+      "category": "Marketing Feature - Farmer Management",
+      "description": "Farmer holding bunch of potatoes. Use in Bento grid or feature section."
+    },
+    {
+      "url": "https://images.pexels.com/photos/4487382/pexels-photo-4487382.jpeg",
+      "category": "Marketing Feature - Cold Storage",
+      "description": "Warehouse worker operating a pallet jack. Represents Godown/Cold Storage module."
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Install required icon library: yarn add @phosphor-icons/react",
+    "Use <Plant size={32} weight='duotone' /> from Phosphor Icons as the app logo instead of an image.",
+    "Implement Shadcn UI components for complex interactivity (Select, Dialog, Form, Table).",
+    "Ensure the dashboard uses a collapsible left sidebar layout.",
+    "For PDF Generation, install and use 'jspdf' and 'jspdf-autotable' or a similar library to satisfy the Invoice PDF download requirement.",
+    "Ensure 'Phase 1: everything at once' is reflected in the sidebar navigation (Dashboard, Vendors, Farmers, Companies, Products, Godowns, Purchases, Sales, Stock, Ledger, Invoices, Reports).",
+    "Implement a Farmer Ledger view showing a running balance of transactions."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "DO NOT apply universal transition (e.g., transition: all). Add transitions to specific interactive elements.",
+    "DO NOT center align the app container in App.css (.App { text-align: center; }).",
+    "NEVER use transparent backgrounds for dropdowns, headers, or surfaces over content.",
+    "NEVER use emojis for icons. Use Phosphor Icons.",
+    "DO NOT use generic centered layouts or simplistic gradients.",
+    "Use 2-3x more spacing (Tailwind p-8 to p-12) in marketing sections. Keep ERP tables dense but readable.",
+    "Ensure all buttons have distinct hover/active states.",
+    "Always include a data-testid attribute on interactive elements to support automated testing."
+  ],
+  "general_ui_ux_design_guidelines": [
+    "Prioritize optical alignment over geometric alignment (e.g., adjust padding for icons next to text).",
+    "Form inputs must have clear labels, placeholder text, and visible focus states.",
+    "Data tables must allow horizontal scrolling on smaller screens without breaking layout.",
+    "Use progressive disclosure: hide secondary actions behind an ellipses menu in dense tables.",
+    "Error states in forms must clearly indicate the field and reason, not just a red border."
+  ]
+}

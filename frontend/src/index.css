@@ -1,0 +1,88 @@
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Manrope:wght@500;600;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: "IBM Plex Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+@layer base {
+    :root {
+        --background: 210 20% 98%;
+        --foreground: 222 24% 8%;
+        --card: 0 0% 100%;
+        --card-foreground: 222 24% 8%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222 24% 8%;
+        --primary: 150 37% 26%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 26 53% 52%;
+        --secondary-foreground: 0 0% 100%;
+        --muted: 210 16% 95%;
+        --muted-foreground: 220 9% 46%;
+        --accent: 41 73% 66%;
+        --accent-foreground: 222 24% 12%;
+        --destructive: 0 72% 45%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 220 13% 91%;
+        --input: 220 13% 88%;
+        --ring: 150 37% 26%;
+        --chart-1: 150 37% 26%;
+        --chart-2: 26 53% 52%;
+        --chart-3: 41 73% 66%;
+        --chart-4: 199 40% 32%;
+        --chart-5: 12 45% 45%;
+        --radius: 0.25rem;
+        --paper: 40 33% 98%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+.font-display {
+    font-family: "Playfair Display", serif;
+}
+.font-head {
+    font-family: "Manrope", sans-serif;
+}
+
+.grain::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.25'/%3E%3C/svg%3E");
+}
+
+@keyframes rise {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.rise {
+    animation: rise 0.5s ease-out both;
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}

@@ -1,0 +1,33 @@
+{
+  "summary": "First test iteration on Potato Management ERP. Backend: 25/25 pytest tests passed covering auth, masters CRUD, purchases/sales with amount computation (bag & weight basis), sales-to-farmer auto ledger debit, potato-purchase-from-farmer auto ledger credit, credit-note auto ledger + cascade delete, ledger running balance, manual ledger add/delete, auto-entry deletion rejected (400), stock computation, potato lot-wise stock, dashboard summary, reports transactions, and invoices filter. Frontend: 11/11 critical UI flows passed via Playwright including landing page, bad-password shows login-error, successful login lands on /admin/dashboard, all four summary stat cards render, farmer master create/toggle-closed/delete via confirm dialog, purchases seeds amount preview correctly shows bags*rate (10*50=500), stock pages render for seeds/lenobag/potato, ledger + credit-notes + invoices + reports pages load, logout clears session and /admin/dashboard redirects back to /login.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All modal dialogs", "issues": ["Radix Dialog warning: Missing `Description` or `aria-describedby` on DialogContent. Not user-visible but accessibility gap."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Low) Add DialogDescription (or aria-describedby) to shadcn Dialog usages in CrudPage.jsx and Ledger.jsx to silence Radix a11y warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py: /api/purchases and /api/sales do NOT validate that party_id / product_id refer to existing records; invalid ObjectId strings would silently save. Consider validating references.",
+    "server.py: DELETE of a purchase/sale removes linked ledger, but does not remove linked credit-note ledger cascade if credit-note references the deleted invoice via against_invoice. Not covered by data model, informational only.",
+    "server.py: PUT /purchases/{id} & /sales/{id} use `existing['invoice_no']` in the particulars but the response uses the freshly-updated doc; particulars stay consistent, OK.",
+    "CrudPage.jsx toggle(): sends the entire row (including id stripped) as PUT payload; backend filters by allowed fields so this works but sends unused data like created_at.",
+    "CORS: allow_origins=*, allow_credentials=True. Browsers reject credentialed requests with wildcard origin. Since app uses Bearer token from localStorage this works, but the httpOnly cookie set on login won't be sent cross-origin. Not blocking current flows.",
+    "Login sets cookie with secure=True & samesite='none' which is fine for prod HTTPS; but auth relies primarily on Bearer token from localStorage as documented."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py", "/app/test_reports/iteration_1.json"],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "100% (11/11)"},
+  "test_credentials": "admin@potatoerp.com / Admin@123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created test vendors, farmers, companies, godowns, products, purchases, sales, credit-notes prefixed with TEST_ / UI_. Backend test fixture cleans up. UI test created UI_Vendor_*, UI_Seed_*, and a purchase draft (cancelled before save). One purchase draft may leave a UI_Vendor and UI_Seed record in DB; not affecting functionality.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All happy-path features validated on both backend and frontend. If further tests are needed, focus on: (a) Sales PDF download via jsPDF (was not clicked in UI test to avoid file-download prompt), (b) Reports export PDF, (c) full sales flow with select dropdowns (Radix - use force click after 400ms wait), (d) Farmer Ledger auto-entry appearance after creating sales/purchases from UI. Existing UI test uses time-based unique names to avoid collisions."
+}
