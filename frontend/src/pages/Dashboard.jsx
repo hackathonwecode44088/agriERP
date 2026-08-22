@@ -4,6 +4,7 @@ import { Building2, Package, Sprout, Tractor, TrendingDown, TrendingUp, Wallet, 
 import api, { money, numFmt } from "@/lib/api";
 import { PageHeader, StatCard, DataTable } from "@/components/Shell";
 import { SeasonComparison } from "@/components/SeasonComparison";
+import { LowStockPanel, SeasonChart } from "@/components/DashboardInsights";
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
@@ -58,6 +59,8 @@ const Dashboard = () => {
       </div>
 
       <SeasonComparison />
+      <SeasonChart />
+      <LowStockPanel />
 
       <div className="mt-8 grid gap-6 xl:grid-cols-2">
         <div>

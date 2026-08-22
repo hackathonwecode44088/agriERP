@@ -15,6 +15,7 @@ const FIELDS = [
   { name: "email", label: "Email" },
   { name: "gstin", label: "GSTIN" },
   { name: "rate_alert_threshold", label: "Rate Alert Threshold (%)" },
+  { name: "low_stock_threshold", label: "Low Stock Threshold (Bags)" },
 ];
 
 const Settings = () => {

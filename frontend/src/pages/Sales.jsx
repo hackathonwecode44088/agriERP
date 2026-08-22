@@ -39,6 +39,16 @@ const Sales = () => {
         { name: "gst_rate", label: "GST Rate", type: "select", options: GST_RATES, default: "0" },
         { name: "payment_type", label: "Type", type: "select", options: PAYMENT_TYPES, default: "cash" },
         { name: "payment_mode", label: "Payment Mode", type: "select", options: PAYMENT_MODES, default: "cash" },
+        {
+          name: "payment_status",
+          label: "Payment Status",
+          type: "select",
+          options: [
+            { value: "paid", label: "Paid (settles outstanding)" },
+            { value: "unpaid", label: "Unpaid (keep outstanding)" },
+          ],
+          default: "paid",
+        },
         { name: "cheque_no", label: "Cheque / Ref No." },
         { name: "notes", label: "Notes", type: "textarea", full: true },
       ]}
@@ -60,6 +70,21 @@ const Sales = () => {
           render: (r) => money(r.total_amount ?? r.amount),
         },
         { key: "payment_mode", label: "Mode" },
+        {
+          key: "payment_status",
+          label: "Status",
+          render: (r) => (
+            <Badge
+              className={`rounded-full ${
+                r.payment_status === "paid"
+                  ? "bg-primary/10 text-primary hover:bg-primary/10"
+                  : "bg-destructive/10 text-destructive hover:bg-destructive/10"
+              }`}
+            >
+              {r.payment_status === "paid" ? "Paid" : "Unpaid"}
+            </Badge>
+          ),
+        },
         {
           key: "payment_type",
           label: "Type",

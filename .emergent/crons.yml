@@ -1,0 +1,8 @@
+crons:
+  - name: monthly-statements
+    description: "Emails every farmer their ledger statement on the 1st of each month at 9am IST (03:30 UTC)"
+    cron: "30 3 1 * *"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/monthly-statements"
+    method: POST
+    enabled: true

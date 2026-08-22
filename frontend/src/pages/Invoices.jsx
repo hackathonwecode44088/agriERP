@@ -109,6 +109,24 @@ const Invoices = () => {
             render: (r) => money(r.total_amount ?? r.amount),
           },
           { key: "payment_mode", label: "Mode" },
+          {
+            key: "payment_status",
+            label: "Status",
+            render: (r) =>
+              r.doc_type === "sale" ? (
+                <Badge
+                  className={`rounded-full ${
+                    r.payment_status === "paid"
+                      ? "bg-primary/10 text-primary hover:bg-primary/10"
+                      : "bg-destructive/10 text-destructive hover:bg-destructive/10"
+                  }`}
+                >
+                  {r.payment_status === "paid" ? "Paid" : "Unpaid"}
+                </Badge>
+              ) : (
+                "-"
+              ),
+          },
         ]}
         actions={(row) => (
           <Button

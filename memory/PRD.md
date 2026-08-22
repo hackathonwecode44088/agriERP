@@ -56,15 +56,22 @@ Spec: Website Module (landing page with company info) + Admin Module with Login,
 - **Entry validation**: sales are blocked with a clear 400 when bags exceed product or lot availability (and kg when the sale is weight-based); edits exclude their own quantity from the check
 - Verified by testing agent: 12/12 new backend tests and all frontend flows passed (4 legacy iteration-2/3 tests now fail only because they created sales without purchases — test artefacts, not app bugs)
 
+## Implemented — Iteration 5 (2026-06)
+- **Invoice payment status**: sales carry `payment_status` (defaults paid for cash, unpaid for credit); a paid company sale settles that company's outstanding without a separate receipt, and a paid farmer sale posts a matching `sale_payment` ledger credit; badges on the sales and invoices tables
+- **Season chart**: `/api/dashboard/season-chart` + recharts month-by-month (Nov→Oct) purchases vs sales, with a "Compare last season" dashed overlay
+- **Low stock warning**: `/api/dashboard/low-stock` flags products at or below the configurable `low_stock_threshold` (default 10) and potato lots nearly cleared, shown on the dashboard
+- **Statement scheduling**: platform cron `.emergent/crons.yml` (`30 3 1 * *` UTC = 9am IST on the 1st) calls `POST /api/cron/monthly-statements` — Bearer `WEBHOOK_CRON_SECRET`, constant-time compare, idempotent on `X-Webhook-Id`, work handed to a background task; run history at `/api/cron/runs`
+- Verified by testing agent: 10/10 new backend tests and all frontend flows passed; crons.yml validated
+
 ## Backlog
-- P1: Auto-settle company outstanding when a potato sale is recorded as already paid on the invoice
+- P2: Split `server.py` into routers (sales/ledger/dashboard/cron) — file is ~1,200 lines
+- P2: Break `skipped` in the monthly statement run into no-email / no-entries / failed counts
 - P2: Refresh the rate threshold on entry screens without a page reload
-- P2: Show an error banner if the season-comparison widget fails to load
 - P2: GSTIN/email format validation on Company Profile; DialogDescription for Radix a11y warning
-- P3: Update legacy tests in test_iteration2/3 to seed a purchase before creating sales
+- P3: Legacy iteration-2/3 tests need a purchase seeded before creating sales
 - P3: Lot trace edge case — purchases with a blank lot no. group under "(no lot)"
 
 ## Next Tasks
-1. Payment status on invoices with auto-settlement
-2. Season-over-season charts on the dashboard
-3. Legacy test seed updates
+1. Router split for maintainability
+2. Partial payments against an invoice
+3. Cron run history surfaced in the admin UI

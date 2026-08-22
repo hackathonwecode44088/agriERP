@@ -6,10 +6,11 @@ load_dotenv(ROOT_DIR / ".env")
 
 import logging
 import os
+import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, FastAPI, HTTPException, Request, Response
 from starlette.middleware.cors import CORSMiddleware
 
 from core import (
@@ -92,9 +93,11 @@ async def get_profile():
             "address": "APMC Yard, Deesa, Gujarat, India",
             "gstin": "24ABCDE1234F1Z5",
             "rate_alert_threshold": 20,
+            "low_stock_threshold": 10,
         }
     doc.pop("_id", None)
     doc.setdefault("rate_alert_threshold", 20)
+    doc.setdefault("low_stock_threshold", 10)
     return doc
 
 
@@ -189,7 +192,7 @@ async def sync_ledger(ref_type: str, ref_id: str, farmer_id: Optional[str], date
 TXN_FIELDS = [
     "category", "date", "party_type", "party_id", "product_id", "godown_id",
     "lot_no", "vehicle_no", "bags", "weight", "rate", "rate_basis", "gst_rate",
-    "payment_type", "payment_mode", "cheque_no", "notes", "status",
+    "payment_type", "payment_mode", "payment_status", "cheque_no", "notes", "status",
 ]
 
 
@@ -210,6 +213,8 @@ def clean_txn(payload: dict) -> dict:
     doc["total_amount"] = round(doc["amount"] + doc["cgst"] + doc["sgst"], 2)
     doc.setdefault("status", "active")
     doc.setdefault("payment_type", "cash")
+    if not doc.get("payment_status"):
+        doc["payment_status"] = "paid" if doc["payment_type"] == "cash" else "unpaid"
     return doc
 
 
@@ -401,6 +406,22 @@ async def assert_sale_stock(doc: dict, exclude_sale_id: str = ""):
             )
 
 
+async def sync_sale_payment(sale_id: str, doc: dict):
+    """A sale flagged paid settles itself: farmers get a matching ledger credit."""
+    if doc.get("payment_status") == "paid" and doc.get("party_type") == "farmer" and doc.get("party_id"):
+        await sync_ledger(
+            "sale_payment",
+            sale_id,
+            doc["party_id"],
+            doc.get("date", ""),
+            f"Payment against {doc.get('invoice_no', 'invoice')} ({doc.get('payment_mode', 'cash')})",
+            0,
+            doc.get("total_amount", doc.get("amount", 0)),
+        )
+    else:
+        await db.ledger.delete_many({"ref_type": "sale_payment", "ref_id": sale_id})
+
+
 # ---------------------------------------------------------------- sales
 @api.get("/sales")
 async def list_sales(category: Optional[str] = None, user: dict = Depends(get_current_user)):
@@ -420,6 +441,7 @@ async def create_sale(payload: dict = Body(...), user: dict = Depends(get_curren
     if doc.get("party_type") == "farmer" and doc.get("party_id"):
         await sync_ledger("sale", sid, doc["party_id"], doc.get("date", ""),
                           f"Sale {doc['invoice_no']}", doc["amount"], 0)
+    await sync_sale_payment(sid, doc)
     return ser(await db.sales.find_one({"_id": res.inserted_id}))
 
 
@@ -437,6 +459,7 @@ async def update_sale(item_id: str, payload: dict = Body(...), user: dict = Depe
                           f"Sale {existing.get('invoice_no', '')}", doc["amount"], 0)
     else:
         await db.ledger.delete_many({"ref_type": "sale", "ref_id": item_id})
+    await sync_sale_payment(item_id, {**doc, "invoice_no": existing.get("invoice_no", "")})
     return ser(await db.sales.find_one({"_id": oid(item_id)}))
 
 
@@ -446,6 +469,7 @@ async def delete_sale(item_id: str, user: dict = Depends(get_current_user)):
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Record not found")
     await db.ledger.delete_many({"ref_type": "sale", "ref_id": item_id})
+    await db.ledger.delete_many({"ref_type": "sale_payment", "ref_id": item_id})
     return {"ok": True}
 
 
@@ -601,6 +625,11 @@ async def outstanding(user: dict = Depends(get_current_user)):
         cid = str(c["_id"])
         billed = sum(num(s.get("amount")) for s in sales if s.get("party_id") == cid)
         paid = sum(num(r.get("amount")) for r in receipts if r.get("party_id") == cid)
+        paid += sum(
+            num(s.get("total_amount") or s.get("amount"))
+            for s in sales
+            if s.get("party_id") == cid and s.get("payment_status") == "paid"
+        )
         if billed == 0 and paid == 0:
             continue
         company_rows.append(
@@ -919,6 +948,163 @@ async def email_statement(farmer_id: str, user: dict = Depends(require_admin)):
         ),
     )
     return {"ok": True, "sent_to": to, "email_id": email_id}
+
+
+@api.get("/dashboard/season-chart")
+async def season_chart(user: dict = Depends(get_current_user)):
+    today = datetime.now(timezone.utc).date()
+    start_year = today.year if today.month >= 11 else today.year - 1
+    months = [(11, start_year), (12, start_year)] + [(m, start_year + 1) for m in range(1, 11)]
+
+    purchases = await db.purchases.find({}).to_list(20000)
+    sales = await db.sales.find({}).to_list(20000)
+
+    def bucket(docs, y, m):
+        prefix = f"{y}-{m:02d}"
+        return round(sum(num(d.get("amount")) for d in docs if str(d.get("date") or "").startswith(prefix)), 2)
+
+    rows = []
+    for m, y in months:
+        prev_y = y - 1
+        rows.append(
+            {
+                "month": datetime(y, m, 1).strftime("%b"),
+                "purchases": bucket(purchases, y, m),
+                "sales": bucket(sales, y, m),
+                "prev_purchases": bucket(purchases, prev_y, m),
+                "prev_sales": bucket(sales, prev_y, m),
+            }
+        )
+    return {"season": f"{start_year}-{str(start_year + 1)[-2:]}", "months": rows}
+
+
+@api.get("/dashboard/low-stock")
+async def low_stock(user: dict = Depends(get_current_user)):
+    profile = await get_profile()
+    threshold = num(profile.get("low_stock_threshold")) or 10
+
+    products = await db.products.find({}).to_list(2000)
+    purchases = await db.purchases.find({}).to_list(20000)
+    sales = await db.sales.find({}).to_list(20000)
+
+    product_rows = []
+    for p in products:
+        pid = str(p["_id"])
+        pin = sum(num(x.get("bags")) for x in purchases if x.get("product_id") == pid) + num(p.get("opening_qty"))
+        pout = sum(num(x.get("bags")) for x in sales if x.get("product_id") == pid)
+        balance = round(pin - pout, 2)
+        if pin > 0 and balance <= threshold:
+            product_rows.append(
+                {
+                    "product_id": pid,
+                    "product": p.get("name", ""),
+                    "category": p.get("category", ""),
+                    "in_bags": round(pin, 2),
+                    "balance_bags": balance,
+                    "state": "out" if balance <= 0 else "low",
+                }
+            )
+
+    lot_rows = []
+    for x in purchases:
+        if x.get("category") != "potato" or not x.get("lot_no"):
+            continue
+        sold = sum(num(s.get("bags")) for s in sales if s.get("lot_no") == x.get("lot_no"))
+        balance = round(num(x.get("bags")) - sold, 2)
+        if num(x.get("bags")) > 0 and balance <= max(threshold, num(x.get("bags")) * 0.1):
+            lot_rows.append(
+                {
+                    "lot_no": x.get("lot_no"),
+                    "vehicle_no": x.get("vehicle_no", ""),
+                    "in_bags": num(x.get("bags")),
+                    "balance_bags": balance,
+                    "state": "out" if balance <= 0 else "low",
+                }
+            )
+
+    return {"threshold": threshold, "products": product_rows, "lots": lot_rows}
+
+
+async def run_monthly_statements(run_id: str):
+    farmers = await db.farmers.find({}).to_list(5000)
+    profile = await get_profile()
+    sent, skipped = 0, 0
+    for f in farmers:
+        email = (f.get("email") or "").strip()
+        if not email or "@" not in email:
+            skipped += 1
+            continue
+        entries = await db.ledger.find({"farmer_id": str(f["_id"])}).sort("date", 1).to_list(5000)
+        if not entries:
+            skipped += 1
+            continue
+        rows, balance = [], 0.0
+        for e in entries:
+            balance += num(e.get("debit")) - num(e.get("credit"))
+            rows.append({**{k: e.get(k) for k in ("date", "particulars", "debit", "credit")}, "balance": round(balance, 2)})
+        totals = {
+            "debit": round(sum(num(r["debit"]) for r in rows), 2),
+            "credit": round(sum(num(r["credit"]) for r in rows), 2),
+            "balance": round(balance, 2),
+        }
+        try:
+            await send_email(
+                to=email,
+                subject=f"Your monthly account statement from {profile.get('name', 'Potato ERP')}",
+                html=statement_html(
+                    company_name=profile.get("name", "Potato ERP"),
+                    farmer_name=f.get("name", ""),
+                    rows=rows,
+                    totals=totals,
+                ),
+            )
+            sent += 1
+        except Exception as e:
+            logger.error(f"Monthly statement failed for {email}: {e}")
+            skipped += 1
+    await db.cron_runs.update_one(
+        {"_id": run_id},
+        {"$set": {"finished_at": now_iso(), "sent": sent, "skipped": skipped, "status": "done"}},
+    )
+
+
+@api.post("/cron/monthly-statements")
+async def cron_monthly_statements(request: Request, background: BackgroundTasks):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    if not token or not secrets.compare_digest(token, os.environ["WEBHOOK_CRON_SECRET"]):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        envelope = await request.json()
+    except Exception:
+        envelope = {}
+    run_id = request.headers.get("X-Webhook-Id") or envelope.get("run_id") or now_iso()
+    existing = await db.cron_runs.find_one({"_id": run_id})
+    if existing:
+        return {"ok": True, "duplicate": True, "run_id": run_id}
+    await db.cron_runs.insert_one(
+        {"_id": run_id, "job": "monthly-statements", "started_at": now_iso(), "status": "queued"}
+    )
+    background.add_task(run_monthly_statements, run_id)
+    return {"ok": True, "queued": True, "run_id": run_id}
+
+
+@api.get("/cron/runs", dependencies=[Depends(require_admin)])
+async def cron_runs(user: dict = Depends(require_admin)):
+    docs = await db.cron_runs.find({}).sort("started_at", -1).to_list(50)
+    return [
+        {
+            "run_id": str(d.get("_id")),
+            "job": d.get("job"),
+            "status": d.get("status"),
+            "started_at": d.get("started_at"),
+            "finished_at": d.get("finished_at"),
+            "sent": d.get("sent"),
+            "skipped": d.get("skipped"),
+        }
+        for d in docs
+    ]
 
 
 @api.get("/reports/transactions", dependencies=[Depends(require_admin)])

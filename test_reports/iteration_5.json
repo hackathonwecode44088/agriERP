@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 5 (Invoice Payment Status, Season Chart, Low Stock Warning, Statement Scheduling) fully verified. Backend: 10/10 new tests in test_iteration5.py PASS -- (a) cash sale defaults payment_status='paid' and credit sale defaults 'unpaid' when omitted; (b) paid company sale settles outstanding to 0, flipping unpaid restores balance, delete clears row; (c) paid farmer sale creates matching ledger credit with ref_type='sale_payment', flipping to unpaid removes it, delete removes both sale + sale_payment entries; (d) GET /api/dashboard/season-chart returns {season, months:[12]} with months[0].month=='Nov' and months[-1]=='Oct' and per-row purchases/sales/prev_purchases/prev_sales; (e) GET/PUT /api/company-profile carries low_stock_threshold (default 10) and persists; (f) GET /api/dashboard/low-stock returns threshold from company profile, product appears when threshold>=balance and disappears when lowered; (g) POST /api/cron/monthly-statements returns 401 with no or wrong Bearer, 200 with correct WEBHOOK_CRON_SECRET returning {ok:true, queued:true, run_id}; duplicate X-Webhook-Id returns {duplicate:true} without re-running; GET /api/cron/runs shows the run (admin only, 403 for operator). Frontend: admin login OK. Dashboard shows season-chart (Nov→Oct axis, Purchases/Sales bars) and low-stock-panel (PayStatus Spud 5 bags left 'Running low', Lot L-PS1 5 left 'Running low'). 'Compare last season' toggle (season-chart-compare-toggle) adds 2 dashed <path stroke-dasharray> lines and clears them back to 0 on toggle-off. Settings page has settings-field-low_stock_threshold; saving 77 persists after reload; restored to 10. Invoices page renders Paid/Unpaid text in status column. Sales table also has payment_status badge column (verified in code). Cron YAML valid: single cron 'monthly-statements', 5-field UTC '30 3 1 * *', POST {BASE_URL}/api/cron/monthly-statements, enabled true, no forbidden fields.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/test_reports/pytest/iteration5_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "sync_sale_payment() correctly deletes 'sale_payment' entries whenever payment_status != 'paid' or party_type != 'farmer' — clean idempotent design.",
+    "/api/outstanding company received now includes sum of paid sales' total_amount fallback to amount — good, but consider caching this per-company aggregation if company list grows (currently O(companies × sales)).",
+    "/api/dashboard/low-stock lot threshold uses max(threshold, bags*0.1) — a lot of 100 bags with threshold 10 will therefore flag at ≤10 bags left, which matches the spec but is subtle; a brief comment in code would help future maintainers.",
+    "/api/cron/monthly-statements uses secrets.compare_digest (constant time) and BackgroundTasks — production-grade; idempotency via cron_runs._id = X-Webhook-Id or envelope.run_id is solid. Consider putting the WEBHOOK_CRON_SECRET check into a dedicated require_webhook_secret() dependency for reuse.",
+    "run_monthly_statements catches individual send_email exceptions and counts as skipped — good. However 'skipped' currently mixes 'no email', 'no ledger entries', and 'send failed'. Consider splitting into skipped_no_email / skipped_no_entries / failed for observability.",
+    "Backend server.py is 1183 lines — approaching the 700-line split guideline. Consider splitting into routers/{sales,ledger,dashboard,cron}.py for maintainability.",
+    "Frontend DashboardInsights.jsx uses recharts; SeasonChart re-renders whole chart on toggle — acceptable at 12 rows, no perf risk."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/test_reports/pytest/iteration5_results.xml",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "success_rate": {"backend": "100% (10/10 iteration5 new)", "frontend": "100% of iteration-5 flows verified"},
+  "test_credentials": "admin@potatoerp.com / Admin@123 ; operator@potatoerp.com / Operator@123 ; WEBHOOK_CRON_SECRET from /app/backend/.env",
+  "seed_data_creation": "test_iteration5.py fully self-cleans (creates TEST_it5_* products/farmers/companies + purchases/sales then deletes them). One cron run row TEST_it5_run_<ts> is left in cron_runs (harmless; used to prove idempotency).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 5 features all pass. New endpoints: GET /api/dashboard/season-chart -> {season:'YYYY-YY', months:[12 rows with month/purchases/sales/prev_purchases/prev_sales]}; GET /api/dashboard/low-stock -> {threshold, products:[...], lots:[...]} — threshold comes from company profile low_stock_threshold (default 10), lots flagged at <=max(threshold, 10% of intake); POST /api/cron/monthly-statements (public, Bearer WEBHOOK_CRON_SECRET, idempotent via X-Webhook-Id, BackgroundTasks); GET /api/cron/runs (admin only). Sale docs now carry payment_status ('paid'|'unpaid'); default = 'paid' when payment_type='cash', 'unpaid' otherwise. Paid farmer sale generates a ledger row with ref_type='sale_payment'. Paid company sale is added to /api/outstanding company 'received'. Frontend testids: season-chart, season-chart-compare-toggle, low-stock-panel, low-stock-product-<id>, low-stock-lot-<lot>, settings-field-low_stock_threshold. Note: run pytest with `-o addopts=\"\"` to bypass xdist parallelism (pytest.ini enables -n auto --dist loadscope); parallel workers race on shared company_profile.low_stock_threshold. crons.yml at /app/.emergent/crons.yml is valid.",
+  "rca of the issue": "N/A — no issues found."
+}
