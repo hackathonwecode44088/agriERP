@@ -18,6 +18,9 @@ import Ledger from "@/pages/Ledger";
 import CreditNotes from "@/pages/CreditNotes";
 import Invoices from "@/pages/Invoices";
 import Reports from "@/pages/Reports";
+import Settings from "@/pages/Settings";
+import Receipts from "@/pages/Receipts";
+import LotTrace from "@/pages/LotTrace";
 
 function App() {
   return (
@@ -42,6 +45,9 @@ function App() {
               <Route path="credit-notes" element={<CreditNotes />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="reports" element={<Reports />} />
+              <Route path="receipts" element={<Receipts />} />
+              <Route path="lots" element={<LotTrace />} />
+              <Route path="settings" element={<Settings />} />
             </Route>
           </Routes>
           <Toaster position="top-right" richColors />

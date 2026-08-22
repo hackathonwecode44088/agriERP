@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Download, Plus, Trash2 } from "lucide-react";
+import { Download, FileSpreadsheet, Plus, Trash2 } from "lucide-react";
 import api, { errMsg, money } from "@/lib/api";
 import { DataTable, PageHeader, StatCard } from "@/components/Shell";
 import { downloadLedgerPdf } from "@/lib/pdf";
+import { downloadExcel, mapRows } from "@/lib/excel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,6 +72,33 @@ const Ledger = () => {
         subtitle="Running account of every farmer — sales are debits, potato purchases and credit notes are credits."
         action={
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              disabled={!data}
+              data-testid="ledger-excel-btn"
+              className="gap-2"
+              onClick={() =>
+                downloadExcel({
+                  filename: `ledger-${farmerName || "farmer"}`,
+                  sheets: [
+                    {
+                      name: "Ledger",
+                      rows: mapRows(data.entries, [
+                        { label: "Date", value: (r) => r.date },
+                        { label: "Particulars", value: (r) => r.particulars },
+                        { label: "Source", value: (r) => r.ref_type },
+                        { label: "Debit", value: (r) => r.debit },
+                        { label: "Credit", value: (r) => r.credit },
+                        { label: "Balance", value: (r) => r.balance },
+                      ]),
+                    },
+                    { name: "Totals", rows: [data.totals] },
+                  ],
+                })
+              }
+            >
+              <FileSpreadsheet className="h-4 w-4" /> Excel
+            </Button>
             <Button
               variant="outline"
               disabled={!data}

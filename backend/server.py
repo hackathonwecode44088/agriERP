@@ -344,6 +344,179 @@ async def delete_credit_note(item_id: str, user: dict = Depends(get_current_user
     return {"ok": True}
 
 
+# ---------------------------------------------------------------- receipts / payments
+RECEIPT_FIELDS = [
+    "date", "direction", "party_type", "party_id", "amount",
+    "payment_mode", "cheque_no", "against_invoice", "notes",
+]
+
+
+def receipt_particulars(doc: dict) -> str:
+    label = "Payment made" if doc.get("direction") == "paid" else "Payment received"
+    return f"{label} {doc.get('receipt_no', '')} ({doc.get('payment_mode', 'cash')})"
+
+
+async def apply_receipt_ledger(receipt_id: str, doc: dict):
+    if doc.get("party_type") != "farmer" or not doc.get("party_id"):
+        await db.ledger.delete_many({"ref_type": "receipt", "ref_id": receipt_id})
+        return
+    paid_out = doc.get("direction") == "paid"
+    await sync_ledger(
+        "receipt",
+        receipt_id,
+        doc["party_id"],
+        doc.get("date", ""),
+        receipt_particulars(doc),
+        doc["amount"] if paid_out else 0,
+        0 if paid_out else doc["amount"],
+    )
+
+
+@api.get("/receipts")
+async def list_receipts(party_type: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {"party_type": party_type} if party_type else {}
+    docs = await db.receipts.find(q).sort("date", -1).to_list(5000)
+    return [ser(d) for d in docs]
+
+
+@api.post("/receipts")
+async def create_receipt(payload: dict = Body(...), user: dict = Depends(get_current_user)):
+    doc = {k: v for k, v in payload.items() if k in RECEIPT_FIELDS}
+    doc["amount"] = num(doc.get("amount"))
+    doc.setdefault("direction", "received")
+    doc.setdefault("payment_mode", "cash")
+    doc["receipt_no"] = await next_number("RCP")
+    doc["created_at"] = now_iso()
+    res = await db.receipts.insert_one(doc)
+    doc["receipt_no"] = doc["receipt_no"]
+    await apply_receipt_ledger(str(res.inserted_id), doc)
+    return ser(await db.receipts.find_one({"_id": res.inserted_id}))
+
+
+@api.put("/receipts/{item_id}")
+async def update_receipt(item_id: str, payload: dict = Body(...), user: dict = Depends(get_current_user)):
+    existing = await db.receipts.find_one({"_id": oid(item_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Record not found")
+    doc = {k: v for k, v in payload.items() if k in RECEIPT_FIELDS}
+    doc["amount"] = num(doc.get("amount"))
+    await db.receipts.update_one({"_id": oid(item_id)}, {"$set": doc})
+    merged = {**existing, **doc, "receipt_no": existing.get("receipt_no", "")}
+    await apply_receipt_ledger(item_id, merged)
+    return ser(await db.receipts.find_one({"_id": oid(item_id)}))
+
+
+@api.delete("/receipts/{item_id}")
+async def delete_receipt(item_id: str, user: dict = Depends(get_current_user)):
+    res = await db.receipts.delete_one({"_id": oid(item_id)})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Record not found")
+    await db.ledger.delete_many({"ref_type": "receipt", "ref_id": item_id})
+    return {"ok": True}
+
+
+@api.get("/outstanding")
+async def outstanding(user: dict = Depends(get_current_user)):
+    farmers = await db.farmers.find({}).to_list(5000)
+    companies = await db.companies.find({}).to_list(5000)
+    ledger = await db.ledger.find({}).to_list(20000)
+    sales = await db.sales.find({}).to_list(10000)
+    receipts = await db.receipts.find({}).to_list(10000)
+
+    farmer_rows = []
+    for f in farmers:
+        fid = str(f["_id"])
+        entries = [l for l in ledger if l.get("farmer_id") == fid]
+        bal = sum(num(l.get("debit")) - num(l.get("credit")) for l in entries)
+        if not entries:
+            continue
+        farmer_rows.append(
+            {
+                "party_id": fid,
+                "name": f.get("name", ""),
+                "village": f.get("village", ""),
+                "debit": round(sum(num(l.get("debit")) for l in entries), 2),
+                "credit": round(sum(num(l.get("credit")) for l in entries), 2),
+                "balance": round(bal, 2),
+            }
+        )
+
+    company_rows = []
+    for c in companies:
+        cid = str(c["_id"])
+        billed = sum(num(s.get("amount")) for s in sales if s.get("party_id") == cid)
+        paid = sum(num(r.get("amount")) for r in receipts if r.get("party_id") == cid)
+        if billed == 0 and paid == 0:
+            continue
+        company_rows.append(
+            {
+                "party_id": cid,
+                "name": c.get("name", ""),
+                "billed": round(billed, 2),
+                "received": round(paid, 2),
+                "balance": round(billed - paid, 2),
+            }
+        )
+
+    return {
+        "farmers": farmer_rows,
+        "companies": company_rows,
+        "totals": {
+            "farmer_balance": round(sum(r["balance"] for r in farmer_rows), 2),
+            "company_balance": round(sum(r["balance"] for r in company_rows), 2),
+        },
+    }
+
+
+@api.get("/lots/trace")
+async def lot_trace(user: dict = Depends(get_current_user)):
+    purchases = await db.purchases.find({"category": "potato"}).to_list(5000)
+    sales = await db.sales.find({"category": "potato"}).to_list(5000)
+    farmers = {str(f["_id"]): f.get("name", "") for f in await db.farmers.find({}).to_list(5000)}
+    companies = {str(c["_id"]): c.get("name", "") for c in await db.companies.find({}).to_list(5000)}
+    godowns = {str(g["_id"]): g.get("name", "") for g in await db.godowns.find({}).to_list(500)}
+    products = {str(p["_id"]): p.get("name", "") for p in await db.products.find({}).to_list(2000)}
+
+    rows = []
+    for p in purchases:
+        lot = p.get("lot_no") or "(no lot)"
+        outs = [s for s in sales if (s.get("lot_no") or "(no lot)") == lot]
+        sold_bags = sum(num(s.get("bags")) for s in outs)
+        sale_value = sum(num(s.get("amount")) for s in outs)
+        rows.append(
+            {
+                "lot_no": lot,
+                "purchase_no": p.get("invoice_no", ""),
+                "purchase_date": p.get("date", ""),
+                "farmer": farmers.get(p.get("party_id", ""), "-"),
+                "product": products.get(p.get("product_id", ""), "-"),
+                "godown": godowns.get(p.get("godown_id", ""), "-"),
+                "vehicle_no": p.get("vehicle_no", ""),
+                "in_bags": num(p.get("bags")),
+                "in_weight": num(p.get("weight")),
+                "purchase_value": round(num(p.get("amount")), 2),
+                "sold_bags": round(sold_bags, 2),
+                "balance_bags": round(num(p.get("bags")) - sold_bags, 2),
+                "sale_value": round(sale_value, 2),
+                "margin": round(sale_value - num(p.get("amount")), 2),
+                "sales": [
+                    {
+                        "invoice_no": s.get("invoice_no", ""),
+                        "date": s.get("date", ""),
+                        "company": companies.get(s.get("party_id", ""), "-"),
+                        "bags": num(s.get("bags")),
+                        "weight": num(s.get("weight")),
+                        "amount": round(num(s.get("amount")), 2),
+                        "payment_mode": s.get("payment_mode", ""),
+                    }
+                    for s in sorted(outs, key=lambda x: x.get("date") or "")
+                ],
+            }
+        )
+    rows.sort(key=lambda r: r["purchase_date"], reverse=True)
+    return rows
+
+
 # ---------------------------------------------------------------- farmer ledger
 LEDGER_FIELDS = ["farmer_id", "date", "particulars", "debit", "credit", "payment_mode", "notes"]
 

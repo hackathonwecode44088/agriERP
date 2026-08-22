@@ -43,6 +43,7 @@ export const CrudPage = ({
   soft = true,
   computeAmount = false,
   searchKeys = ["name"],
+  onChanged,
 }) => {
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({});
@@ -54,7 +55,13 @@ export const CrudPage = ({
   const [term, setTerm] = useState("");
 
   const sources = useMemo(
-    () => [...new Set(fields.filter((f) => f.optionsFrom).map((f) => f.optionsFrom))],
+    () => [
+      ...new Set(
+        fields
+          .filter((f) => f.optionsFrom)
+          .flatMap((f) => (Array.isArray(f.optionsFrom) ? f.optionsFrom : [f.optionsFrom]))
+      ),
+    ],
     [fields]
   );
 
@@ -107,6 +114,7 @@ export const CrudPage = ({
       toast.success(editing ? "Updated successfully" : "Created successfully");
       setOpen(false);
       load();
+      onChanged?.();
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -118,6 +126,7 @@ export const CrudPage = ({
       toast.success("Deleted");
       setConfirmRow(null);
       load();
+      onChanged?.();
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -149,8 +158,16 @@ export const CrudPage = ({
 
   const optionsFor = (f) => {
     if (f.options) return f.options;
-    const list = lookups[f.optionsFrom] || [];
-    return list.map((x) => ({ value: x.id, label: x.name + (x.village ? ` (${x.village})` : "") }));
+    const srcs = Array.isArray(f.optionsFrom) ? f.optionsFrom : [f.optionsFrom];
+    return srcs.flatMap((s) =>
+      (lookups[s] || []).map((x) => ({
+        value: x.id,
+        label:
+          x.name +
+          (x.village ? ` (${x.village})` : "") +
+          (srcs.length > 1 ? ` — ${s === "farmers" ? "Farmer" : "Company"}` : ""),
+      }))
+    );
   };
 
   return (

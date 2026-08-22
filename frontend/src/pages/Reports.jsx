@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download, Filter } from "lucide-react";
+import { Download, Filter, FileSpreadsheet } from "lucide-react";
 import api, { money, numFmt } from "@/lib/api";
 import { DataTable, PageHeader, StatCard } from "@/components/Shell";
 import { downloadReportPdf } from "@/lib/pdf";
+import { downloadExcel, mapRows } from "@/lib/excel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,37 +39,73 @@ const Reports = () => {
 
   const nameOfParty = (id) => parties.find((p) => p.id === id)?.name || "-";
 
+  const reportColumns = [
+    { label: "No.", value: (r) => r.invoice_no },
+    { label: "Date", value: (r) => r.date },
+    { label: "Category", value: (r) => r.category },
+    { label: "Party", value: (r) => nameOfParty(r.party_id) },
+    { label: "Lot", value: (r) => r.lot_no },
+    { label: "Vehicle", value: (r) => r.vehicle_no },
+    { label: "Bags", value: (r) => r.bags },
+    { label: "Weight", value: (r) => r.weight },
+    { label: "Rate", value: (r) => r.rate },
+    { label: "Amount", value: (r) => r.amount },
+    { label: "Type", value: (r) => r.payment_type },
+    { label: "Mode", value: (r) => r.payment_mode },
+  ];
+  const reportTitle = `${kind === "sales" ? "Sales" : "Purchases"} Report`;
+
   return (
     <div data-testid="reports-page">
       <PageHeader
         title="Reports"
         subtitle="Filter purchases and sales by category, party and date range."
         action={
-          <Button
-            variant="outline"
-            className="gap-2"
-            disabled={!data}
-            data-testid="reports-pdf-btn"
-            onClick={() =>
-              downloadReportPdf({
-                title: `${kind === "sales" ? "Sales" : "Purchases"} Report`,
-                rows: data.rows,
-                totals: data.totals,
-                columns: [
-                  { label: "No.", value: (r) => r.invoice_no },
-                  { label: "Date", value: (r) => r.date },
-                  { label: "Category", value: (r) => r.category },
-                  { label: "Party", value: (r) => nameOfParty(r.party_id) },
-                  { label: "Lot", value: (r) => r.lot_no },
-                  { label: "Bags", value: (r) => r.bags },
-                  { label: "Weight", value: (r) => r.weight },
-                  { label: "Amount", value: (r) => r.amount },
-                ],
-              })
-            }
-          >
-            <Download className="h-4 w-4" /> Export PDF
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              disabled={!data}
+              data-testid="reports-excel-btn"
+              onClick={() =>
+                downloadExcel({
+                  filename: reportTitle.replace(/\s+/g, "-").toLowerCase(),
+                  sheets: [
+                    { name: reportTitle, rows: mapRows(data.rows, reportColumns) },
+                    {
+                      name: "Totals",
+                      rows: [
+                        {
+                          Records: data.totals.count,
+                          Bags: data.totals.bags,
+                          Weight: data.totals.weight,
+                          Amount: data.totals.amount,
+                        },
+                      ],
+                    },
+                  ],
+                })
+              }
+            >
+              <FileSpreadsheet className="h-4 w-4" /> Excel
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              disabled={!data}
+              data-testid="reports-pdf-btn"
+              onClick={() =>
+                downloadReportPdf({
+                  title: reportTitle,
+                  rows: data.rows,
+                  totals: data.totals,
+                  columns: reportColumns.slice(0, 8),
+                })
+              }
+            >
+              <Download className="h-4 w-4" /> PDF
+            </Button>
+          </div>
         }
       />
 

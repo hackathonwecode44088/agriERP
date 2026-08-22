@@ -36,14 +36,22 @@ Spec: Website Module (landing page with company info) + Admin Module with Login,
 - Auto invoice numbering (INV-/PUR-/CN-), auto ledger sync on create/update/delete of source transactions
 - PDF: invoice/voucher, farmer ledger statement, transaction report
 
+## Implemented — Iteration 2 (2026-06)
+- **Company Profile** (`/admin/settings`): edit name, tagline, about, phone, email, GSTIN, address; reflected on the public website and all PDFs
+- **Payments & Receipts** (`/admin/receipts`): receipt entries (received / paid out) for farmers and companies with auto receipt numbers; farmer receipts auto-post to the ledger (received = credit, paid = debit) and sync on edit/delete; Farmer & Company Outstanding tables via `/api/outstanding`
+- **Excel export** (SheetJS): Reports, Farmer Ledger, Stock and Lot Traceability, alongside existing PDF export
+- **Lot Traceability** (`/admin/lots`): expandable lot cards joining each potato purchase with its company sales by lot no., showing sold/balance bags and gross margin
+- Verified by testing agent: backend 36/36, frontend all new-feature + regression checks passed
+
 ## Backlog
-- P1: Editable company profile screen in admin (API `PUT /api/company-profile` exists, no UI yet)
-- P1: Payment receipt entries against farmer/company outstanding balances
 - P1: Validate `party_id` / `product_id` references on purchase & sale creation
-- P2: Multi-user roles (accountant/operator), Excel export, GST tax breakup on invoices
+- P1: Auto-settle company outstanding when a potato sale is recorded as already paid on the invoice
+- P2: Multi-user roles (accountant/operator), GST tax breakup on invoices
+- P2: GSTIN/email format validation on Company Profile
 - P2: DialogDescription for Radix a11y warning
+- P3: Lot trace edge case — purchases with a blank lot no. group under "(no lot)"
 
 ## Next Tasks
-1. Company profile settings screen
-2. Payments/receipts module with outstanding tracking
-3. Excel export alongside PDF for reports
+1. GST tax breakup on sale invoices
+2. Operator/accountant roles with restricted screens
+3. Reference validation on purchase/sale entry

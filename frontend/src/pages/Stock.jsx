@@ -3,7 +3,9 @@ import { useParams } from "react-router-dom";
 import api, { money, numFmt } from "@/lib/api";
 import { DataTable, PageHeader, StatCard } from "@/components/Shell";
 import { CATEGORY_META } from "@/lib/constants";
-import { Package, Warehouse, Boxes } from "lucide-react";
+import { downloadExcel, mapRows } from "@/lib/excel";
+import { Button } from "@/components/ui/button";
+import { FileSpreadsheet, Package, Warehouse, Boxes } from "lucide-react";
 
 const Stock = () => {
   const { category } = useParams();
@@ -21,7 +23,42 @@ const Stock = () => {
 
   return (
     <div data-testid={`stock-${category}-page`}>
-      <PageHeader title={`${meta.label} Stock`} subtitle="Live balance from purchases, sales and opening stock." />
+      <PageHeader
+        title={`${meta.label} Stock`}
+        subtitle="Live balance from purchases, sales and opening stock."
+        action={
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!data}
+            data-testid="stock-excel-btn"
+            onClick={() =>
+              downloadExcel({
+                filename: `stock-${category}`,
+                sheets: [
+                  {
+                    name: "Products",
+                    rows: mapRows(products, [
+                      { label: "Product", value: (r) => r.product },
+                      { label: "Variety", value: (r) => r.variety },
+                      { label: "In Bags", value: (r) => r.in_bags },
+                      { label: "Out Bags", value: (r) => r.out_bags },
+                      { label: "Balance Bags", value: (r) => r.balance_bags },
+                      { label: "Balance Weight", value: (r) => r.balance_weight },
+                      { label: "Purchase Value", value: (r) => r.purchase_value },
+                      { label: "Sale Value", value: (r) => r.sale_value },
+                    ]),
+                  },
+                  { name: "Godowns", rows: data.godowns },
+                  { name: "Lots", rows: data.lots },
+                ],
+              })
+            }
+          >
+            <FileSpreadsheet className="h-4 w-4" /> Excel
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard testid="stock-in" label="Total In (Bags)" icon={Boxes} value={numFmt(totalIn.toFixed(2))} />

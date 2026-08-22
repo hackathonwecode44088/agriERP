@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 2 — validated 4 new features (Company Profile, Receipts, Excel exports, Lot Traceability) on both backend and frontend. Backend: 11/11 new pytest tests in test_iteration2.py pass, plus regression 25/25 in backend_test.py = 36/36. Frontend: verified via Playwright — Settings save+persist reflected on public landing (name+tagline+about+GSTIN); Receipts create with Farmer party writes RCP-xxxxx row and creates a matching CREDIT ledger entry seen on /admin/ledger; Ledger Excel + PDF buttons present, Ledger Excel triggers download 'ledger-Ramesh Patel.xlsx'; Lots Excel triggers 'lot-traceability.xlsx'; Reports Excel triggers 'sales-report.xlsx' (button was disabled until data loaded — waited for enabled state); Stock Potato Excel triggers 'stock-potato.xlsx'; Lot search filter narrows to empty state correctly. Dashboard + navigation regression OK.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iteration2_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py apply_receipt_ledger(): only farmer party writes ledger; company receipts intentionally kept out of ledger (billing settled via /outstanding). Correct per spec.",
+    "server.py /api/outstanding: 'received' for a company only counts documents in db.receipts with party_id==company; if a company sale is paid via cash on the sale doc itself (payment_mode=cash on the invoice) it will not reduce the outstanding. Consider treating sales with payment_mode in {cash,upi,cheque} + status=paid as also settled, or auto-generating a receipt on POS-style sale. Not a bug — documented behaviour but user should know.",
+    "server.py /api/lots/trace: purchases without a lot_no are grouped as '(no lot)' and any sales without a lot_no join them; two unrelated purchases with blank lot could show cross-matched sales. Minor edge case.",
+    "Reports/Stock Excel buttons are disabled until API loads (correct), but there is no spinner on the button — user might click a disabled button silently. Consider showing a small loader.",
+    "Settings.jsx: no client-side validation for GSTIN format or email; anything is accepted. Optional enhancement.",
+    "Receipts.jsx uses onClickCapture on the wrapper to refresh /outstanding after any click (setTick + setTimeout 600ms). This makes the outstanding tables reactive but issues an /outstanding request on every click, including opening dropdowns. Consider triggering only on save/delete."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/test_reports/iteration_2.json"
+  ],
+  "success_rate": {"backend": "100% (36/36)", "frontend": "100% new-feature checks + regression"},
+  "test_credentials": "admin@potatoerp.com / Admin@123",
+  "seed_data_creation": "test_iteration2.py fixture creates TEST_IT2_Farmer/Company/Godown/Product and cleans them up along with generated purchases/sales/receipts. UI test created one Receipts row (RCP-xxxxx for 777) against 'Ramesh Patel' — left in DB as previous receipt RCP-00001 was already there per handoff.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 4 iteration-2 features pass on backend and frontend. For Reports/Stock Excel buttons remember to wait until the button is not disabled (data-loaded) before clicking. Lot Traceability page shows empty state when no potato purchases with lot_no exist — create both a potato purchase and a sale sharing the same lot_no to see cards. Radix Select needs ~500 ms after opening before clicking [role=option]."
+}

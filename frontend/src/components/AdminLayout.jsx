@@ -10,10 +10,13 @@ import {
   Menu,
   Package,
   ReceiptText,
+  Route,
+  Settings,
   Sprout,
   Store,
   Tractor,
   Truck,
+  Wallet,
   Warehouse,
   X,
 } from "lucide-react";
@@ -59,16 +62,22 @@ const NAV = [
       { to: "/admin/purchases/potato", label: "Purchase from Farmer", icon: Truck },
       { to: "/admin/sales/potato", label: "Sell to Company", icon: ReceiptText },
       { to: "/admin/stock/potato", label: "Stock", icon: Package },
+      { to: "/admin/lots", label: "Lot Traceability", icon: Route },
     ],
   },
   {
     group: "Accounts",
     items: [
       { to: "/admin/ledger", label: "Farmer Ledger", icon: FileText },
+      { to: "/admin/receipts", label: "Payments & Receipts", icon: Wallet },
       { to: "/admin/credit-notes", label: "Credit Notes", icon: ReceiptText },
       { to: "/admin/invoices", label: "Invoices", icon: FileText },
       { to: "/admin/reports", label: "Reports", icon: BarChart3 },
     ],
+  },
+  {
+    group: "Settings",
+    items: [{ to: "/admin/settings", label: "Company Profile", icon: Settings }],
   },
 ];
 
