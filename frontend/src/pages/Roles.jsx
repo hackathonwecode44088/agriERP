@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 
 const FEATURE_LABELS = {
   dashboard: "Dashboard",
+  notifications: "Notifications",
   parties: "Parties",
   "product-categories": "Product Categories",
   products: "Products",
@@ -30,6 +31,17 @@ const FEATURE_LABELS = {
   reports: "Reports",
 };
 const OPS = ["view", "create", "edit", "delete"];
+const DASHBOARD_BLOCKS = [
+  { key: "receivable", label: "Total Receivable" },
+  { key: "payable", label: "Total Payable" },
+  { key: "counts", label: "Parties & Products counts" },
+  { key: "category-summary", label: "Category Summary" },
+  { key: "season", label: "Season comparison & chart" },
+  { key: "low-stock", label: "Low stock warnings" },
+  { key: "reorder", label: "Reorder suggestions" },
+  { key: "recent", label: "Recent purchases & sales" },
+  { key: "quick-actions", label: "Quick action buttons" },
+];
 
 const Roles = () => {
   const [rows, setRows] = useState([]);
@@ -81,6 +93,8 @@ const Roles = () => {
       } else {
         cur.add(op);
         if (op !== "view") cur.add("view");
+        if (feature === "dashboard" && op === "view")
+          DASHBOARD_BLOCKS.forEach((b) => cur.add(b.key));
       }
       const arr = Array.from(cur);
       const next = { ...s };
@@ -235,6 +249,33 @@ const Roles = () => {
               </div>
             ))}
             </div>
+          </div>
+
+          <div className="mt-4 rounded-sm border border-border" data-testid="roles-dashboard-blocks">
+            <p className="border-b border-border bg-muted/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Dashboard blocks · what this role sees on the dashboard
+            </p>
+            {!(permsState.dashboard || []).includes("view") ? (
+              <p className="px-3 py-4 text-xs text-muted-foreground">
+                Tick "Dashboard → view" above to choose which blocks this role can see.
+              </p>
+            ) : (
+              <div className="grid gap-2 p-3 sm:grid-cols-2">
+                {DASHBOARD_BLOCKS.map((b) => (
+                  <label
+                    key={b.key}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm transition-colors duration-200 hover:bg-muted/50"
+                  >
+                    <Checkbox
+                      data-testid={`roles-block-${b.key}`}
+                      checked={(permsState.dashboard || []).includes(b.key)}
+                      onCheckedChange={() => toggleOp("dashboard", b.key)}
+                    />
+                    {b.label}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setOpen(false)} data-testid="roles-cancel-btn">

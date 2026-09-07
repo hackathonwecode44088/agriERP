@@ -19,8 +19,9 @@ from core import (
 from mailer import reminder_html, send_email, statement_html
 from scoping import (
     ALL_FEATURES, ScopedDB, compute_perms, ensure_perm, get_scope,
-    require_admin_scope, require_perm, require_superadmin,
+    has_perm, require_admin_scope, require_perm, require_superadmin,
 )
+from notify import GENERAL, notify, purge
 
 app = FastAPI(title="AgriERP")
 api = APIRouter(prefix="/api")
@@ -33,11 +34,7 @@ PLANS = {
     "pro": {"label": "Pro", "max_companies": 5, "max_users": 20, "price": 2499},
     "enterprise": {"label": "Enterprise", "max_companies": 50, "max_users": 200, "price": 7999},
 }
-DEFAULT_CATEGORIES = [
-    {"name": "Seeds", "unit": "bag", "tracks_lot": False, "gst_default": 5},
-    {"name": "Leno Bag", "unit": "piece", "tracks_lot": False, "gst_default": 18},
-    {"name": "Potato", "unit": "bag", "tracks_lot": True, "gst_default": 0},
-]
+DEFAULT_CATEGORIES = []
 
 
 def num(v) -> float:
@@ -118,9 +115,8 @@ async def signup(payload: dict = Body(...)):
         "password_hash": hash_password(password), "created_at": now_iso(),
     })
     sdb = ScopedDB(tenant_id, company_id)
-    for c in DEFAULT_CATEGORIES:
-        await sdb.product_categories.insert_one({**c, "custom_fields": [], "status": "active",
-                                                 "created_at": now_iso()})
+    await notify(sdb, feature=GENERAL, kind="welcome", title=f"Welcome to AgriERP, {workspace}",
+                 body="Start by adding your product categories, then parties and your first purchase.")
     token = create_access_token(str(user.inserted_id), email)
     return {"access_token": token, "user": ser(await db.users.find_one({"_id": user.inserted_id})),
             "tenant_id": tenant_id, "company_id": company_id}
@@ -184,10 +180,9 @@ async def create_company(payload: dict = Body(...), scope: dict = Depends(requir
                 "low_stock_threshold": 10, "created_at": now_iso()})
     res = await db.companies.insert_one(doc)
     company_id = str(res.inserted_id)
-    sdb = ScopedDB(tenant_id, company_id)
-    for c in DEFAULT_CATEGORIES:
-        await sdb.product_categories.insert_one({**c, "custom_fields": [], "status": "active",
-                                                 "created_at": now_iso()})
+    await notify(ScopedDB(tenant_id, company_id), feature=GENERAL, kind="company-created",
+                 title=f"Company '{name}' created",
+                 body="It starts with empty books — add categories and products to begin.")
     return ser(await db.companies.find_one({"_id": res.inserted_id}))
 
 
@@ -478,6 +473,25 @@ async def apply_receipt_ledger(sdb, receipt_id: str, doc: dict):
                       doc["amount"] if paid_out else 0, 0 if paid_out else doc["amount"])
 
 
+async def low_stock_notice(sdb, doc: dict) -> None:
+    """After a sale, warn when the product's remaining bags fall to the configured threshold."""
+    product_id = doc.get("product_id")
+    if not product_id:
+        return
+    profile = await company_profile(sdb)
+    threshold = num(profile.get("low_stock_threshold")) or 10
+    left = await available(sdb, "bags", doc.get("category_id"), product_id)
+    if left > threshold:
+        return
+    product = await sdb.products.find_one({"_id": oid(product_id)})
+    name = (product or {}).get("name", "Product")
+    await notify(sdb, feature="stock", kind="low-stock", level="warning",
+                 title=f"{name} is {'sold out' if left <= 0 else 'running low'}",
+                 body=f"{round(left, 2)} bag(s) left (threshold {round(threshold, 2)}).",
+                 meta={"product_id": product_id},
+                 dedupe_key=f"low-stock:{product_id}:{now_iso()[:10]}")
+
+
 def register_txn(kind: str):
     prefix = "PUR" if kind == "purchases" else "INV"
 
@@ -501,6 +515,15 @@ def register_txn(kind: str):
         doc["created_at"] = now_iso()
         res = await sdb[kind].insert_one(doc)
         await sync_txn_ledger(sdb, kind, str(res.inserted_id), doc)
+        party = await sdb.parties.find_one({"_id": oid(doc["party_id"])}) if doc.get("party_id") else None
+        label = "Purchase" if kind == "purchases" else "Sale"
+        await notify(sdb, feature=kind, kind=f"{kind}-created",
+                     title=f"{label} {doc['invoice_no']} recorded",
+                     body=f"{num(doc.get('bags'))} bag(s) · {round(num(doc.get('total_amount') or doc.get('amount')), 2)} · "
+                          f"{(party or {}).get('name', 'party')} · by {scope['user'].get('name') or scope['user'].get('email')}",
+                     meta={"id": str(res.inserted_id), "invoice_no": doc["invoice_no"]})
+        if kind == "sales":
+            await low_stock_notice(sdb, doc)
         return ser(await sdb[kind].find_one({"_id": res.inserted_id}))
 
     async def update_txn(item_id: str, payload: dict = Body(...), scope: dict = Depends(get_scope)):
@@ -554,6 +577,12 @@ def register_txn(kind: str):
         status = "paid" if paid >= round(total, 2) else "partial"
         await sdb[kind].update_one({"_id": oid(item_id)}, {"$set": {"payment_status": status}})
         await sync_txn_ledger(sdb, kind, item_id, {**txn, "payment_status": "partial"})
+        await notify(sdb, feature="invoices", kind=f"invoice-{status}",
+                     level="success" if status == "paid" else "info",
+                     title=f"Invoice {inv} {'fully paid' if status == 'paid' else 'part paid'}",
+                     body=f"{round(amount, 2)} received · {round(total - paid, 2)} still outstanding."
+                          if status != "paid" else f"{round(total, 2)} settled in full.",
+                     meta={"invoice_no": inv})
         return {"ok": True, "receipt": ser(await sdb.receipts.find_one({"_id": res.inserted_id})),
                 "paid_amount": paid, "balance": round(total - paid, 2), "payment_status": status}
 
@@ -591,6 +620,11 @@ async def create_receipt(payload: dict = Body(...), scope: dict = Depends(requir
     doc["created_at"] = now_iso()
     res = await sdb.receipts.insert_one(doc)
     await apply_receipt_ledger(sdb, str(res.inserted_id), doc)
+    party = await sdb.parties.find_one({"_id": oid(doc["party_id"])}) if doc.get("party_id") else None
+    await notify(sdb, feature="receipts", kind="receipt-created",
+                 title=f"{'Payment received' if doc['direction'] == 'received' else 'Payment made'} · {doc['receipt_no']}",
+                 body=f"{round(doc['amount'], 2)} {doc.get('payment_mode', 'cash')} · {(party or {}).get('name', 'party')}",
+                 meta={"id": str(res.inserted_id)})
     return ser(await sdb.receipts.find_one({"_id": res.inserted_id}))
 
 
@@ -632,6 +666,10 @@ async def create_credit_note(payload: dict = Body(...), scope: dict = Depends(re
     res = await sdb.credit_notes.insert_one(doc)
     await sync_ledger(sdb, "credit_note", str(res.inserted_id), doc.get("party_id"),
                       doc.get("date", ""), f"Credit note {doc['note_no']}", 0, doc["amount"])
+    await notify(sdb, feature="credit-notes", kind="credit-note-created",
+                 title=f"Credit note {doc['note_no']} issued",
+                 body=f"{round(doc['amount'], 2)} · {doc.get('reason', '')}".strip(" ·"),
+                 meta={"id": str(res.inserted_id)})
     return ser(await sdb.credit_notes.find_one({"_id": res.inserted_id}))
 
 
@@ -678,6 +716,10 @@ async def create_debit_note(payload: dict = Body(...), scope: dict = Depends(req
     res = await sdb.debit_notes.insert_one(doc)
     await sync_ledger(sdb, "debit_note", str(res.inserted_id), doc.get("party_id"),
                       doc.get("date", ""), f"Debit note {doc['note_no']}", doc["amount"], 0)
+    await notify(sdb, feature="debit-notes", kind="debit-note-created",
+                 title=f"Debit note {doc['note_no']} issued",
+                 body=f"{round(doc['amount'], 2)} · {doc.get('reason', '')}".strip(" ·"),
+                 meta={"id": str(res.inserted_id)})
     return ser(await sdb.debit_notes.find_one({"_id": res.inserted_id}))
 
 
@@ -886,8 +928,10 @@ async def dashboard(scope: dict = Depends(get_scope)):
         balances[x.get("party_id")] = balances.get(x.get("party_id"), 0) + num(x.get("debit")) - num(x.get("credit"))
     receivable = round(sum(v for v in balances.values() if v > 0), 2)
     payable = round(-sum(v for v in balances.values() if v < 0), 2)
-    if user.get("role") not in ("owner", "admin"):
-        receivable = payable = None
+    if not has_perm(scope, "dashboard", "receivable"):
+        receivable = None
+    if not has_perm(scope, "dashboard", "payable"):
+        payable = None
 
     counts = {"parties": await sdb.parties.count_documents({}),
               "farmers": await sdb.parties.count_documents({"roles": "farmer"}),
@@ -1318,6 +1362,7 @@ async def run_statements(run_id: str, reminders_only: bool):
         for company in await db.companies.find({"tenant_id": tid}).to_list(100):
             sdb = ScopedDB(tid, str(company["_id"]))
             profile = await company_profile(sdb)
+            c_sent, c_skipped = 0, 0
             for p in await sdb.parties.find({}).to_list(5000):
                 email = (p.get("email") or "").strip()
                 rows, totals = await ledger_rows(sdb, str(p["_id"]))
@@ -1325,6 +1370,7 @@ async def run_statements(run_id: str, reminders_only: bool):
                            (totals["balance"] <= 0 if reminders_only else not rows))
                 if blocked:
                     skipped += 1
+                    c_skipped += 1
                     continue
                 try:
                     if reminders_only:
@@ -1340,11 +1386,18 @@ async def run_statements(run_id: str, reminders_only: bool):
                                                              party_name=p.get("name", ""),
                                                              rows=rows, totals=totals))
                     sent += 1
+                    c_sent += 1
                     recipients.append({"name": p.get("name", ""), "email": email,
                                        "balance": totals["balance"], "company": profile.get("name", "")})
                 except Exception as e:
                     logger.error(f"Cron email failed for {email}: {e}")
                     skipped += 1
+                    c_skipped += 1
+            job_label = "Balance reminders" if reminders_only else "Monthly statements"
+            await notify(sdb, feature=GENERAL, kind="email-run",
+                         title=f"{job_label} sent to {c_sent} party(ies)",
+                         body=f"{c_skipped} skipped (no email or nothing due).",
+                         dedupe_key=f"email-run:{run_id}:{company['_id']}")
     await db.cron_runs.update_one({"_id": run_id}, {"$set": {
         "finished_at": now_iso(), "sent": sent, "skipped": skipped,
         "recipients": recipients, "status": "done"}})
@@ -1368,6 +1421,59 @@ async def cron_balance_reminders(request: Request, background: BackgroundTasks):
         return {"ok": True, "duplicate": True}
     background.add_task(run_statements, run_id, True)
     return {"ok": True, "queued": True, "run_id": run_id}
+
+
+async def plan_expiry_notice(scope: dict) -> None:
+    exp = (scope.get("tenant") or {}).get("plan_expires")
+    if not exp:
+        return
+    days = (datetime.fromisoformat(exp).date() - datetime.now(timezone.utc).date()).days
+    if 0 <= days <= 7:
+        await notify(scope["db"], feature=GENERAL, kind="plan-expiry", level="warning",
+                     title=f"Subscription ends in {days} day(s)",
+                     body=f"Your {scope['tenant'].get('plan', 'plan')} plan expires on {exp}. Renew to keep working.",
+                     dedupe_key=f"plan-expiry:{exp}")
+
+
+@api.get("/notifications")
+async def list_notifications(scope: dict = Depends(require_perm("notifications", "view"))):
+    sdb, user = scope["db"], scope["user"]
+    await purge(sdb)
+    await plan_expiry_notice(scope)
+    uid = str(user.get("id") or user.get("_id"))
+    docs = await sdb.notifications.find({}).sort("created_at", -1).to_list(200)
+    items, unread = [], 0
+    for d in docs:
+        feature = d.get("feature") or GENERAL
+        if feature != GENERAL and not (scope["is_admin"] or has_perm(scope, feature, "view")):
+            continue
+        row = ser(d)
+        row["read"] = uid in (d.get("read_by") or [])
+        row.pop("read_by", None)
+        if not row["read"]:
+            unread += 1
+        items.append(row)
+    return {"items": items, "unread": unread}
+
+
+@api.post("/notifications/{item_id}/read")
+async def read_notification(item_id: str, scope: dict = Depends(require_perm("notifications", "view"))):
+    uid = str(scope["user"].get("id") or scope["user"].get("_id"))
+    await scope["db"].notifications.update_one({"_id": oid(item_id)}, {"$addToSet": {"read_by": uid}})
+    return {"ok": True}
+
+
+@api.post("/notifications/read-all")
+async def read_all_notifications(scope: dict = Depends(require_perm("notifications", "view"))):
+    uid = str(scope["user"].get("id") or scope["user"].get("_id"))
+    await scope["db"].notifications.update_many({}, {"$addToSet": {"read_by": uid}})
+    return {"ok": True}
+
+
+@api.delete("/notifications")
+async def clear_notifications(scope: dict = Depends(require_admin_scope)):
+    await scope["db"].notifications.delete_many({})
+    return {"ok": True}
 
 
 @api.get("/cron/runs")

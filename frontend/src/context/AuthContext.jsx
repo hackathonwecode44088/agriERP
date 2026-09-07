@@ -11,6 +11,11 @@ export const AuthProvider = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [companyId, setCompanyId] = useState(localStorage.getItem("companyId") || "");
 
+  const can = useCallback(
+    (feature, op = "view") => isAdmin || (perms?.[feature] || []).includes(op),
+    [isAdmin, perms]
+  );
+
   const loadMe = useCallback(async () => {
     const { data } = await api.get("/auth/me");
     setUser(data.user);
@@ -80,7 +85,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider
-      value={{ user, tenant, companies, companyId, perms, isAdmin, login, signup, logout, switchCompany, refresh: loadMe }}
+      value={{ user, tenant, companies, companyId, perms, isAdmin, can, login, signup, logout, switchCompany, refresh: loadMe }}
     >
       {children}
     </AuthContext.Provider>

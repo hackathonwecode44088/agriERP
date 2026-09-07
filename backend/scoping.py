@@ -9,14 +9,21 @@ from core import db, get_current_user, oid, now_iso
 SCOPED = {
     "parties", "product_categories", "products", "godowns", "price_lists",
     "purchases", "sales", "ledger", "receipts", "credit_notes", "debit_notes", "counters", "roles",
+    "notifications",
 }
 # Tenant-wide (shared across the tenant's companies)
 TENANT_ONLY = {"parties", "counters", "roles"}
 
 # Assignable features (feature key -> operations that make sense for it). Used by the role builder
 # and enforced server-side. users/settings/companies/party-merge/roles stay owner/admin only.
+# Dashboard blocks are permissions too, so an admin can hide money figures from counter staff.
+DASHBOARD_BLOCKS = [
+    "receivable", "payable", "counts", "category-summary", "season",
+    "low-stock", "reorder", "recent", "quick-actions",
+]
 ALL_FEATURES = {
-    "dashboard": ["view"],
+    "dashboard": ["view"] + DASHBOARD_BLOCKS,
+    "notifications": ["view"],
     "parties": ["view", "create", "edit", "delete"],
     "product-categories": ["view", "create", "edit", "delete"],
     "products": ["view", "create", "edit", "delete"],
@@ -35,7 +42,9 @@ ALL_FEATURES = {
 }
 # Legacy "operator" role — entry screens only (matches the historical operator access).
 OPERATOR_PERMS = {
-    "dashboard": ["view"],
+    "dashboard": ["view", "counts", "category-summary", "season", "low-stock", "reorder",
+                  "recent", "quick-actions"],
+    "notifications": ["view"],
     "parties": ["view", "create", "edit", "delete"],
     "product-categories": ["view", "create", "edit", "delete"],
     "products": ["view", "create", "edit", "delete"],
@@ -56,8 +65,15 @@ async def compute_perms(user: dict) -> dict:
     if role == "custom" and user.get("role_id"):
         rdoc = await db.roles.find_one({"_id": oid(user["role_id"]), "tenant_id": user.get("tenant_id")})
         raw = (rdoc or {}).get("permissions", {}) or {}
-        return {f: [o for o in (raw.get(f) or []) if o in ALL_FEATURES.get(f, [])]
-                for f in ALL_FEATURES if raw.get(f)}
+        perms = {f: [o for o in (raw.get(f) or []) if o in ALL_FEATURES.get(f, [])]
+                 for f in ALL_FEATURES if raw.get(f)}
+        # In-app notifications are available to every staff login.
+        perms["notifications"] = ["view"]
+        # Roles saved before dashboard blocks existed get a safe default (no money figures).
+        dash = perms.get("dashboard")
+        if dash and not any(b in dash for b in DASHBOARD_BLOCKS):
+            perms["dashboard"] = ["view", "counts", "category-summary", "recent", "quick-actions"]
+        return perms
     return {f: list(ops) for f, ops in OPERATOR_PERMS.items()}
 
 

@@ -11,7 +11,7 @@ const JOB_LABEL = {
   "balance-reminders": "Balance reminders",
 };
 
-const ScheduleHistory = () => {
+const ScheduleHistory = ({ embedded = false }) => {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
@@ -32,15 +32,27 @@ const ScheduleHistory = () => {
 
   return (
     <div data-testid="schedule-history-page">
-      <PageHeader
-        title="Schedule History"
-        subtitle="Automatic statement and reminder emails. Statements go out on the 1st, balance reminders on the 23rd (9am IST)."
-        action={
+      {embedded ? (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Automatic statement and reminder emails. Statements go out on the 1st, balance reminders on the
+            23rd (9am IST).
+          </p>
           <Button variant="outline" className="gap-2" data-testid="schedule-refresh-btn" onClick={load}>
             <CalendarClock className="h-4 w-4" /> Refresh
           </Button>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          title="Schedule History"
+          subtitle="Automatic statement and reminder emails. Statements go out on the 1st, balance reminders on the 23rd (9am IST)."
+          action={
+            <Button variant="outline" className="gap-2" data-testid="schedule-refresh-btn" onClick={load}>
+              <CalendarClock className="h-4 w-4" /> Refresh
+            </Button>
+          }
+        />
+      )}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard testid="schedule-runs" label="Runs Recorded" value={runs.length} icon={CalendarClock} />
