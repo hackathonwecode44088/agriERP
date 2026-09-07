@@ -12,7 +12,7 @@ export const downloadInvoicePdf = ({ doc: record, company, partyName, productNam
 
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(16);
-  pdf.text(company?.name || "Potato ERP", 14, 20);
+  pdf.text(company?.name || "AgriERP", 14, 20);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9);
   pdf.text(company?.address || "", 14, 26);
@@ -97,7 +97,7 @@ export const downloadLedgerPdf = ({ farmerName, entries, totals, company }) => {
   const pdf = new jsPDF();
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(15);
-  pdf.text(company?.name || "Potato ERP", 14, 20);
+  pdf.text(company?.name || "AgriERP", 14, 20);
   pdf.setFontSize(11);
   pdf.text(`Farmer Ledger - ${farmerName}`, 14, 28);
   line(pdf, 32);

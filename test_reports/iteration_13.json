@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only iteration 13 review of AgriERP UI/UX overhaul + rebrand + validation gates. Tested login, 3-step signup wizard, collapsible sidebar, topbar user menu + logout, mobile drawer at 390x844 across 5 screens, CrudPage inline validation (Sales, Parties), Party Ledger autocomplete presence, redesigned super-admin console layout, and RBAC regression with acc1@demo.com. Passed 41 assertions; 1 real minor issue (mobile Dashboard horizontal overflow) and 2 false-positives from test script.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Dashboard (Category Summary DataTable) at mobile 390x844",
+        "issue": "Body horizontal scroll appears: document.scrollWidth=738 on 390px viewport. Root cause: DataTable in /app/frontend/src/components/Shell.jsx line 46-47 uses <div className='overflow-x-auto ...'><table className='w-full min-w-[720px]'>. Wrapper has overflow-x-auto but no explicit max-w constraint, so the table's 720px min-width bleeds up the layout on mobile. Sales/Ledger/Users/Roles pages (which have fewer/no rows) did not repro; Dashboard reproes reliably because Category Summary always renders 720px table on load. Fix suggestion: add 'max-w-full' (or 'w-full') to the wrapper div in Shell.jsx DataTable and to <div className='overflow-x-auto border ...'> in DashboardInsights.jsx line 86.",
+        "selector": "[data-testid='category-summary-table']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix mobile horizontal overflow on Dashboard: add 'max-w-full' to overflow-x-auto wrapper in /app/frontend/src/components/Shell.jsx DataTable and /app/frontend/src/components/DashboardInsights.jsx so 720px min-w tables scroll internally instead of pushing the page."
+  ],
+  "critical_code_review_comments": [
+    "AdminLayout.jsx: mobile drawer duplicates the entire sidebar JSX (React actually renders two DOM copies since 'sidebar' is a JSX expression used in both aside and mobile drawer). This is fine functionally but means every data-testid inside the sidebar (sidebar-close, sidebar-logo, company-select, nav-* items, logout-btn) exists TWICE in the DOM at all times, and the desktop copy is hidden via 'hidden lg:block'. Automation and screen readers can be confused. Consider rendering the sidebar only in the active layout branch, or add unique testids like sidebar-close-mobile.",
+    "AdminLayout.jsx line 128-131: useEffect auto-expands the group containing the current route but never collapses previously open groups when the user navigates away — minor, groups just accumulate open state (acceptable UX).",
+    "Signup.jsx: user-typed GSTIN is uppercased on submit but not on step-2 validation, so a lower-case GSTIN like '24abcde1234f1z5' would show a format error even though checkRule() already does .toUpperCase() internally — actually validate.js line 26 already uppercases for gstin/ifsc, so this is fine.",
+    "Shell.jsx DataTable wrapper missing max-w-full/w-full — causes the mobile overflow bug reported above."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested", "frontend": "~97% (41/42 real assertions; 1 real UI bug)"},
+  "test_credentials": "Used: merge_test_1788760554@demo.com / Owner@123 (owner), platform@potatoerp.com / Platform@123 (superadmin), acc1@demo.com / Acc@123 (custom-role accountant). All valid.",
+  "seed_data_creation": "None. Signup wizard was validation-only, submit not attempted to avoid tenant pollution.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Everything on the rebrand/validation checklist works: Login (AgriERP branding, inline errors for empty/invalid email/password, show-hide toggle, wrong-cred banner, valid login redirect), 3-step Signup (business-name required, phone 10-digit rule, GSTIN 15-char rule, name/email/password step-3 all inline), collapsible sidebar with nav-group-{masters,transactions,inventory,accounts,settings} all present and toggleable, topbar-title updates on nav, topbar-user-btn opens Popover with topbar-profile-link and topbar-logout, Sales CrudPage empty-save shows 15 destructive-styled inline errors + 'Please fix the highlighted fields' toast, Parties empty-save shows required inline errors, ledger-party-select autocomplete present on /admin/ledger, /platform has left nav (platform-nav-overview/businesses/plans) + platform-search + platform-status-filter (values 'All statuses' etc), UI copy uses 'Business/Businesses' (any 'Workspace' occurrences on /platform are legacy tenant names stored in DB — not UI copy), RBAC accountant sidebar correctly hides Parties/Sales groups and shows only Dashboard + Transactions (Receipts) + Accounts (Ledger, Invoices), /admin/parties as accountant → access-restricted screen renders. Only the Dashboard mobile horizontal overflow needs a code fix. Did not exercise the Plan dialog validation on /platform, Record Payment cheque-no rule on Invoices, or the CN/DN notFuture rule — the underlying validate.js rules are unit-correct so those should work but were not clicked through.",
+  "rca of the issue": "Mobile Dashboard overflow RCA: <div class='overflow-x-auto rounded-sm border border-border bg-white'><table class='w-full min-w-[720px]'> — the overflow-x-auto wrapper has no explicit width constraint. On mobile, block auto-width should normally fill 100% of parent, but combined with the min-w-[720px] table child and the flex-1 main column, the intrinsic min content width propagates up and pushes the outer container beyond 390px. Add 'max-w-full' (or explicit 'w-full min-w-0') on the wrapper to force it to respect parent width and let the table scroll internally. Repro steps: (1) login as merge_test_1788760554@demo.com, (2) set viewport 390x844, (3) navigate to /admin/dashboard, (4) evaluate document.documentElement.scrollWidth → 738 (should be ≤390)."
+}

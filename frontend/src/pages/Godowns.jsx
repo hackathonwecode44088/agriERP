@@ -9,7 +9,7 @@ const Godowns = () => (
     endpoint="godowns"
     searchKeys={["name", "location", "manager"]}
     fields={[
-      { name: "name", label: "Godown Name" },
+      { name: "name", label: "Godown Name", required: true, minLength: 2 },
       {
         name: "kind",
         label: "Type",
@@ -20,10 +20,10 @@ const Godowns = () => (
         ],
         default: "godown",
       },
-      { name: "location", label: "Location" },
-      { name: "capacity_bags", label: "Capacity (Bags)", type: "number" },
+      { name: "location", label: "Location", required: true },
+      { name: "capacity_bags", label: "Capacity (Bags)", type: "number", rule: "positive" },
       { name: "manager", label: "Manager" },
-      { name: "phone", label: "Phone" },
+      { name: "phone", label: "Phone", rule: "phone" },
       { name: "notes", label: "Notes", type: "textarea", full: true },
       { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, default: "active" },
     ]}

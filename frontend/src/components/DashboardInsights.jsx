@@ -83,7 +83,7 @@ export const ReorderPanel = () => {
       <h2 className="font-head mb-3 flex items-center gap-2 text-base font-extrabold md:text-lg">
         <PackagePlus className="h-4 w-4 text-secondary" /> Reorder Suggestions
       </h2>
-      <div className="overflow-x-auto border border-border bg-white">
+      <div className="w-full max-w-full overflow-x-auto border border-border bg-white">
         <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">
@@ -164,7 +164,7 @@ export const LowStockPanel = () => {
       <h2 className="font-head mb-3 flex items-center gap-2 text-base font-extrabold md:text-lg">
         <AlertTriangle className="h-4 w-4 text-secondary" /> Low Stock Warnings
       </h2>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid min-w-0 gap-4 [&>*]:min-w-0 xl:grid-cols-2">
         <div className="border border-border bg-white">
           <p className="border-b border-border px-4 py-2.5 text-xs uppercase tracking-widest text-muted-foreground">
             Products at or below {numFmt(data.threshold)} bags

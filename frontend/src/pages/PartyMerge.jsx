@@ -7,13 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import {
   Dialog,
   DialogContent,
@@ -137,40 +131,41 @@ const PartyMerge = () => {
         </p>
         <div className="grid items-end gap-4 sm:grid-cols-[1fr_auto_1fr_auto]">
           <div>
-            <Label className="text-xs">Merge this party (removed)</Label>
-            <Select value={sourceId} onValueChange={setSourceId}>
-              <SelectTrigger className="mt-1 bg-white" data-testid="manual-source">
-                <SelectValue placeholder="Select party" />
-              </SelectTrigger>
-              <SelectContent className="max-h-72 bg-white">
-                {parties.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                    {p.village ? ` (${p.village})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="text-xs font-semibold text-foreground/80">Merge this party (removed)</Label>
+            <div className="mt-1.5">
+              <SearchableSelect
+                testid="manual-source"
+                className="bg-white"
+                value={sourceId}
+                onValueChange={setSourceId}
+                placeholder="Select party"
+                options={parties.map((p) => ({
+                  value: p.id,
+                  label: `${p.name}${p.village ? ` (${p.village})` : ""}`,
+                }))}
+              />
+            </div>
           </div>
           <ArrowRight className="mb-2.5 hidden h-5 w-5 text-muted-foreground sm:block" />
           <div>
-            <Label className="text-xs">Into this party (kept)</Label>
-            <Select value={targetId} onValueChange={setTargetId}>
-              <SelectTrigger className="mt-1 bg-white" data-testid="manual-target">
-                <SelectValue placeholder="Select party" />
-              </SelectTrigger>
-              <SelectContent className="max-h-72 bg-white">
-                {parties.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                    {p.village ? ` (${p.village})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="text-xs font-semibold text-foreground/80">Into this party (kept)</Label>
+            <div className="mt-1.5">
+              <SearchableSelect
+                testid="manual-target"
+                className="bg-white"
+                value={targetId}
+                onValueChange={setTargetId}
+                placeholder="Select party"
+                options={parties.map((p) => ({
+                  value: p.id,
+                  label: `${p.name}${p.village ? ` (${p.village})` : ""}`,
+                }))}
+              />
+            </div>
           </div>
           <Button
             data-testid="manual-merge-btn"
+            className="h-10 w-full sm:w-auto"
             disabled={!sourceId || !targetId || sourceId === targetId}
             onClick={() => setConfirm({ source: sourceId, target: targetId })}
           >

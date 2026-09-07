@@ -1,35 +1,61 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
+import { validateForm } from "@/lib/validate";
 import { PageHeader } from "@/components/Shell";
+import { FormField, errorClass } from "@/components/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 const FIELDS = [
-  { name: "name", label: "Company Name" },
+  { name: "name", label: "Company Name", required: true, minLength: 2 },
   { name: "tagline", label: "Tagline (website hero)" },
-  { name: "phone", label: "Phone" },
-  { name: "email", label: "Email" },
-  { name: "gstin", label: "GSTIN" },
-  { name: "rate_alert_threshold", label: "Rate Alert Threshold (%)" },
-  { name: "low_stock_threshold", label: "Low Stock Threshold (Bags)" },
+  { name: "phone", label: "Phone", required: true, rule: "phone", placeholder: "10-digit mobile" },
+  { name: "email", label: "Email", rule: "email" },
+  { name: "gstin", label: "GSTIN", rule: "gstin", placeholder: "24ABCDE1234F1Z5" },
+  {
+    name: "rate_alert_threshold",
+    label: "Rate Alert Threshold (%)",
+    required: true,
+    rule: "percent",
+    type: "number",
+    hint: "Warn on entry when a rate differs from the recent average by this much.",
+  },
+  {
+    name: "low_stock_threshold",
+    label: "Low Stock Threshold (Bags)",
+    required: true,
+    rule: "nonneg",
+    type: "number",
+  },
 ];
 
 const Settings = () => {
   const [form, setForm] = useState(null);
+  const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     api.get("/company-profile").then(({ data }) => setForm(data)).catch((e) => toast.error(errMsg(e)));
   }, []);
 
+  const set = (k) => (e) => {
+    setForm((s) => ({ ...s, [k]: e.target.value }));
+    setErrors((s) => ({ ...s, [k]: "" }));
+  };
+
   const save = async () => {
+    const errs = validateForm(FIELDS, form);
+    setErrors(errs);
+    if (Object.keys(errs).length) {
+      toast.error("Please fix the highlighted fields");
+      return;
+    }
     setBusy(true);
     try {
-      await api.put("/company-profile", form);
+      await api.put("/company-profile", { ...form, gstin: String(form.gstin || "").trim().toUpperCase() });
       toast.success("Company profile updated");
     } catch (e) {
       toast.error(errMsg(e));
@@ -44,46 +70,56 @@ const Settings = () => {
     <div data-testid="settings-page">
       <PageHeader
         title="Company Profile"
-        subtitle="Shown on the public website, invoices, vouchers and ledger statements. The rate alert threshold controls when entry screens warn about an unusual rate."
+        subtitle="Shown on invoices, vouchers and ledger statements. The rate alert threshold controls when entry screens warn about an unusual rate."
         action={
-          <Button onClick={save} disabled={busy} className="gap-2" data-testid="settings-save-btn">
-            <Save className="h-4 w-4" /> {busy ? "Saving..." : "Save Changes"}
+          <Button
+            onClick={save}
+            disabled={busy}
+            className="h-10 w-full gap-2 sm:w-auto"
+            data-testid="settings-save-btn"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {busy ? "Saving..." : "Save Changes"}
           </Button>
         }
       />
 
-      <div className="max-w-3xl border border-border bg-white p-6">
+      <div className="max-w-3xl rounded-sm border border-border bg-white p-5 sm:p-7">
         <div className="grid gap-5 sm:grid-cols-2">
           {FIELDS.map((f) => (
-            <div key={f.name}>
-              <Label className="text-xs">{f.label}</Label>
+            <FormField
+              key={f.name}
+              label={f.label}
+              required={f.required}
+              error={errors[f.name]}
+              hint={f.hint}
+              testid={`settings-field-${f.name}`}
+            >
               <Input
                 data-testid={`settings-field-${f.name}`}
-                className="mt-1"
-                value={form[f.name] || ""}
-                onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
+                className={errorClass(errors[f.name])}
+                type={f.type || "text"}
+                placeholder={f.placeholder}
+                value={form[f.name] ?? ""}
+                onChange={set(f.name)}
               />
-            </div>
+            </FormField>
           ))}
-          <div className="sm:col-span-2">
-            <Label className="text-xs">Address</Label>
+          <FormField label="Address" className="sm:col-span-2">
             <Textarea
               data-testid="settings-field-address"
-              className="mt-1"
               value={form.address || ""}
-              onChange={(e) => setForm((s) => ({ ...s, address: e.target.value }))}
+              onChange={set("address")}
             />
-          </div>
-          <div className="sm:col-span-2">
-            <Label className="text-xs">About (website intro)</Label>
+          </FormField>
+          <FormField label="About (website intro)" className="sm:col-span-2">
             <Textarea
               data-testid="settings-field-about"
-              className="mt-1"
               rows={4}
               value={form.about || ""}
-              onChange={(e) => setForm((s) => ({ ...s, about: e.target.value }))}
+              onChange={set("about")}
             />
-          </div>
+          </FormField>
         </div>
       </div>
     </div>

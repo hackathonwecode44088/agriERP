@@ -22,7 +22,7 @@ from scoping import (
     require_admin_scope, require_perm, require_superadmin,
 )
 
-app = FastAPI(title="Potato Management ERP")
+app = FastAPI(title="AgriERP")
 api = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ async def signup(payload: dict = Body(...)):
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
     if not workspace:
-        raise HTTPException(status_code=400, detail="Business / workspace name is required")
+        raise HTTPException(status_code=400, detail="Business name is required")
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="An account with this email already exists")
 
@@ -107,7 +107,8 @@ async def signup(payload: dict = Body(...)):
     tenant_id = str(tenant.inserted_id)
     company = await db.companies.insert_one({
         "tenant_id": tenant_id, "name": company_name, "tagline": "", "about": "",
-        "phone": payload.get("phone", ""), "email": email, "address": "", "gstin": "",
+        "phone": payload.get("phone", ""), "email": email, "address": "",
+        "gstin": str(payload.get("gstin", "")).strip().upper(),
         "rate_alert_threshold": 20, "low_stock_threshold": 10, "created_at": now_iso(),
     })
     company_id = str(company.inserted_id)
@@ -162,7 +163,7 @@ async def logout(response: Response):
 @api.get("/companies")
 async def list_companies(user: dict = Depends(get_current_user)):
     if not user.get("tenant_id"):
-        raise HTTPException(status_code=403, detail="No workspace linked to this account")
+        raise HTTPException(status_code=403, detail="No business linked to this account")
     return [ser(c) for c in
             await db.companies.find({"tenant_id": user["tenant_id"]}).sort("name", 1).to_list(100)]
 
@@ -209,7 +210,7 @@ async def put_profile(payload: dict = Body(...), scope: dict = Depends(require_a
 async def delete_company(company_id: str, scope: dict = Depends(require_admin_scope)):
     tenant_id = scope["tenant"]["id"]
     if await db.companies.count_documents({"tenant_id": tenant_id}) <= 1:
-        raise HTTPException(status_code=400, detail="A workspace needs at least one company")
+        raise HTTPException(status_code=400, detail="A business needs at least one company")
     res = await db.companies.delete_one({"_id": oid(company_id), "tenant_id": tenant_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -1083,8 +1084,8 @@ async def email_statement(party_id: str, scope: dict = Depends(require_perm("led
         raise HTTPException(status_code=400, detail="This party has no email address. Add one on the Party record first.")
     rows, totals = await ledger_rows(sdb, party_id)
     profile = await company_profile(sdb)
-    email_id = await send_email(to=to, subject=f"Your account statement from {profile.get('name', 'Potato ERP')}",
-                               html=statement_html(company_name=profile.get("name", "Potato ERP"),
+    email_id = await send_email(to=to, subject=f"Your account statement from {profile.get('name', 'AgriERP')}",
+                               html=statement_html(company_name=profile.get("name", "AgriERP"),
                                                    party_name=party.get("name", ""), rows=rows, totals=totals))
     return {"ok": True, "sent_to": to, "email_id": email_id}
 
@@ -1137,7 +1138,7 @@ async def update_user(item_id: str, payload: dict = Body(...), scope: dict = Dep
         if item_id == scope["user"]["id"]:
             raise HTTPException(status_code=400, detail="You cannot change your own role")
         if existing.get("role") == "owner":
-            raise HTTPException(status_code=400, detail="The workspace owner's role cannot be changed")
+            raise HTTPException(status_code=400, detail="The business owner's role cannot be changed")
         update["role"] = new_role
         if new_role == "custom":
             rid = str(payload.get("role_id") or "")
@@ -1163,7 +1164,7 @@ async def delete_user(item_id: str, scope: dict = Depends(require_admin_scope)):
     if not existing:
         raise HTTPException(status_code=404, detail="Record not found")
     if existing.get("role") == "owner":
-        raise HTTPException(status_code=400, detail="The workspace owner cannot be removed")
+        raise HTTPException(status_code=400, detail="The business owner cannot be removed")
     await db.users.delete_one({"_id": oid(item_id)})
     return {"ok": True}
 
@@ -1278,14 +1279,14 @@ async def platform_update_tenant(tenant_id: str, payload: dict = Body(...),
         raise HTTPException(status_code=400, detail="Nothing to update")
     res = await db.tenants.update_one({"_id": oid(tenant_id)}, {"$set": update})
     if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Workspace not found")
+        raise HTTPException(status_code=404, detail="Business not found")
     return ser(await db.tenants.find_one({"_id": oid(tenant_id)}))
 
 
 @api.delete("/platform/tenants/{tenant_id}")
 async def platform_delete_tenant(tenant_id: str, user: dict = Depends(require_superadmin)):
     if (await db.tenants.delete_one({"_id": oid(tenant_id)})).deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Workspace not found")
+        raise HTTPException(status_code=404, detail="Business not found")
     for coll in ("companies", "users", "parties", "product_categories", "products", "purchases",
                  "sales", "ledger", "receipts", "credit_notes", "debit_notes", "godowns", "price_lists", "counters", "roles"):
         await db[coll].delete_many({"tenant_id": tenant_id})
@@ -1380,7 +1381,7 @@ async def cron_runs(scope: dict = Depends(require_admin_scope)):
 
 @api.get("/")
 async def root():
-    return {"message": "Potato Management ERP API"}
+    return {"message": "AgriERP API"}
 
 
 app.include_router(api)

@@ -18,6 +18,8 @@ const statusBadge = (r) => (
   </Badge>
 );
 
+const TODAY = new Date().toISOString().slice(0, 10);
+
 export const TxnPage = ({ kind }) => {
   const isSale = kind === "sales";
 
@@ -43,23 +45,36 @@ export const TxnPage = ({ kind }) => {
         { name: "party_id", label: "Party", allLabel: "All Parties", optionsFrom: "parties" },
       ]}
       fields={[
-        { name: "date", label: "Date", type: "date" },
-        { name: "category_id", label: "Category", type: "select", optionsFrom: "product-categories" },
-        { name: "party_id", label: isSale ? "Buyer" : "Supplier", type: "select", optionsFrom: "parties" },
+        { name: "date", label: "Date", type: "date", default: TODAY, required: true, rule: "notFuture" },
+        {
+          name: "category_id",
+          label: "Category",
+          type: "select",
+          optionsFrom: "product-categories",
+          required: true,
+        },
+        {
+          name: "party_id",
+          label: isSale ? "Buyer" : "Supplier",
+          type: "select",
+          optionsFrom: "parties",
+          required: true,
+        },
         {
           name: "product_id",
           label: "Product",
           type: "select",
           optionsFrom: "products",
           optionsFilterBy: "category_id",
+          required: true,
         },
-        { name: "godown_id", label: "Godown / Cold Storage", type: "select", optionsFrom: "godowns" },
+        { name: "godown_id", label: "Godown / Cold Storage", type: "select", optionsFrom: "godowns", required: true },
         { name: "lot_no", label: "Lot No." },
         { name: "vehicle_no", label: "Vehicle No." },
-        { name: "bags", label: "Bag / Katta", type: "number" },
-        { name: "weight", label: "Weight (kg)", type: "number" },
-        { name: "rate_basis", label: "Rate Basis", type: "select", options: RATE_BASIS, default: "bag" },
-        { name: "rate", label: "Rate", type: "number" },
+        { name: "bags", label: "Bag / Katta", type: "number", required: true, rule: "positive" },
+        { name: "weight", label: "Weight (kg)", type: "number", rule: "nonneg" },
+        { name: "rate_basis", label: "Rate Basis", type: "select", options: RATE_BASIS, default: "bag", required: true },
+        { name: "rate", label: "Rate", type: "number", required: true, rule: "positive" },
         { name: "gst_rate", label: "GST Rate", type: "select", options: GST_RATES, default: "0" },
         { name: "payment_type", label: "Type", type: "select", options: PAYMENT_TYPES, default: "cash" },
         { name: "payment_mode", label: "Payment Mode", type: "select", options: PAYMENT_MODES, default: "cash" },

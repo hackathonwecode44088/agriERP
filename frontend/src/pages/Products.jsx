@@ -13,12 +13,12 @@ const Products = () => (
       { name: "category_id", label: "Category", allLabel: "All Categories", optionsFrom: "product-categories" },
     ]}
     fields={[
-      { name: "category_id", label: "Category", type: "select", optionsFrom: "product-categories" },
-      { name: "name", label: "Product Name" },
+      { name: "category_id", label: "Category", type: "select", optionsFrom: "product-categories", required: true },
+      { name: "name", label: "Product Name", required: true, minLength: 2 },
       { name: "variety", label: "Variety / Grade" },
-      { name: "unit", label: "Unit", type: "select", options: UNIT_OPTIONS, default: "bag" },
-      { name: "hsn", label: "HSN Code" },
-      { name: "opening_qty", label: "Opening Stock (Bags)", type: "number" },
+      { name: "unit", label: "Unit", type: "select", options: UNIT_OPTIONS, default: "bag", required: true },
+      { name: "hsn", label: "HSN Code", rule: "hsn" },
+      { name: "opening_qty", label: "Opening Stock (Bags)", type: "number", rule: "nonneg" },
       { name: "notes", label: "Notes", type: "textarea", full: true },
       { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, default: "active" },
     ]}

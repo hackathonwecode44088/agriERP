@@ -10,8 +10,8 @@ const Categories = () => (
     endpoint="product-categories"
     searchKeys={["name"]}
     fields={[
-      { name: "name", label: "Category Name" },
-      { name: "unit", label: "Default Unit", type: "select", options: UNIT_OPTIONS, default: "bag" },
+      { name: "name", label: "Category Name", required: true, minLength: 2 },
+      { name: "unit", label: "Default Unit", type: "select", options: UNIT_OPTIONS, default: "bag", required: true },
       {
         name: "tracks_lot",
         label: "Track Lot / Vehicle",

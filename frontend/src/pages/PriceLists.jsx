@@ -20,12 +20,12 @@ const PriceLists = () => (
       { name: "kind", label: "Rate Type", allLabel: "All Types", options: KIND_OPTIONS },
     ]}
     fields={[
-      { name: "party_id", label: "Party", type: "select", optionsFrom: "parties" },
-      { name: "product_id", label: "Product", type: "select", optionsFrom: "products" },
-      { name: "kind", label: "Rate Type", type: "select", options: KIND_OPTIONS, default: "sales" },
-      { name: "rate", label: "Agreed Rate", type: "number" },
-      { name: "rate_basis", label: "Rate Basis", type: "select", options: RATE_BASIS, default: "bag" },
-      { name: "valid_from", label: "Valid From", type: "date" },
+      { name: "party_id", label: "Party", type: "select", optionsFrom: "parties", required: true },
+      { name: "product_id", label: "Product", type: "select", optionsFrom: "products", required: true },
+      { name: "kind", label: "Rate Type", type: "select", options: KIND_OPTIONS, default: "sales", required: true },
+      { name: "rate", label: "Agreed Rate", type: "number", required: true, rule: "positive" },
+      { name: "rate_basis", label: "Rate Basis", type: "select", options: RATE_BASIS, default: "bag", required: true },
+      { name: "valid_from", label: "Valid From", type: "date", required: true, rule: "date" },
       { name: "notes", label: "Notes", type: "textarea", full: true },
       { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, default: "active" },
     ]}

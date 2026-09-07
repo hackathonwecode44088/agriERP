@@ -13,12 +13,12 @@ const CreditNotes = () => (
     soft={false}
     searchKeys={["note_no", "against_invoice", "reason"]}
     fields={[
-      { name: "date", label: "Date", type: "date", default: TODAY },
-      { name: "party_id", label: "Party", type: "select", optionsFrom: "parties" },
-      { name: "category_id", label: "Category", type: "select", optionsFrom: "product-categories" },
+      { name: "date", label: "Date", type: "date", default: TODAY, required: true, rule: "notFuture" },
+      { name: "party_id", label: "Party", type: "select", optionsFrom: "parties", required: true },
+      { name: "category_id", label: "Category", type: "select", optionsFrom: "product-categories", required: true },
       { name: "against_invoice", label: "Against Invoice No." },
-      { name: "amount", label: "Amount", type: "number" },
-      { name: "reason", label: "Reason", type: "textarea", full: true },
+      { name: "amount", label: "Amount", type: "number", required: true, rule: "positive" },
+      { name: "reason", label: "Reason", type: "textarea", full: true, required: true, minLength: 3 },
     ]}
     columns={[
       { key: "note_no", label: "Note No." },

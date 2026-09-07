@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Pencil, Plus, Trash2, Power, Search } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, Power, Search } from "lucide-react";
 import api, { errMsg, money } from "@/lib/api";
+import { validateForm } from "@/lib/validate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader, DataTable } from "@/components/Shell";
+import { FieldError, errorClass } from "@/components/FormField";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { useAuth } from "@/context/AuthContext";
 
@@ -130,7 +132,10 @@ export const CrudPage = ({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyFor(fields, defaults));
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
   const [confirmRow, setConfirmRow] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [term, setTerm] = useState("");
 
   const sources = useMemo(
@@ -169,14 +174,21 @@ export const CrudPage = ({
     });
   }, [JSON.stringify(sources)]); // eslint-disable-line
 
+  const setField = (name, value) => {
+    setForm((s) => ({ ...s, [name]: value }));
+    setErrors((s) => (s[name] ? { ...s, [name]: "" } : s));
+  };
+
   const openCreate = () => {
     setEditing(null);
+    setErrors({});
     setForm({ ...emptyFor(fields, defaults), custom: {}, ...activeFilters });
     setOpen(true);
   };
 
   const openEdit = (row) => {
     setEditing(row);
+    setErrors({});
     const f = emptyFor(fields, defaults);
     fields.forEach((fl) => {
       if (row[fl.name] === undefined || row[fl.name] === null) return;
@@ -189,6 +201,17 @@ export const CrudPage = ({
   };
 
   const save = async () => {
+    const errs = validateForm(fields, form);
+    customFields.forEach((cf) => {
+      if (cf.required && !String(form.custom?.[cf.key] ?? "").trim())
+        errs[`custom.${cf.key}`] = `${cf.label} is required`;
+    });
+    setErrors(errs);
+    if (Object.keys(errs).length) {
+      toast.error("Please fix the highlighted fields");
+      return;
+    }
+    setSaving(true);
     const payload = { ...defaults, ...form, ...query };
     try {
       if (editing) await api.put(`/${endpoint}/${editing.id}`, payload);
@@ -199,10 +222,13 @@ export const CrudPage = ({
       onChanged?.();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      setSaving(false);
     }
   };
 
   const remove = async (row) => {
+    setDeleting(true);
     try {
       await api.delete(`/${endpoint}/${row.id}`);
       toast.success("Deleted");
@@ -211,6 +237,8 @@ export const CrudPage = ({
       onChanged?.();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -291,7 +319,8 @@ export const CrudPage = ({
       max: stats.max_rate,
       high: diff > 0,
     };
-  }, [stats, form.rate]);
+  }, [stats, form.rate, threshold]);
+
   const filtered = rows.filter((r) => {
     if (!term) return true;
     const t = term.toLowerCase();
@@ -320,7 +349,7 @@ export const CrudPage = ({
         subtitle={subtitle}
         action={
           canCreate ? (
-            <Button data-testid={`${testid}-add-btn`} onClick={openCreate} className="gap-2">
+            <Button data-testid={`${testid}-add-btn`} onClick={openCreate} className="h-10 w-full gap-2 sm:w-auto">
               <Plus className="h-4 w-4" /> Add New
             </Button>
           ) : null
@@ -329,28 +358,30 @@ export const CrudPage = ({
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         {filters.map((f) => (
-          <div key={f.name} className="w-48">
-            <Label className="text-xs">{f.label}</Label>
+          <div key={f.name} className="w-full sm:w-48">
+            <Label className="text-xs font-semibold text-foreground/80">{f.label}</Label>
             <SearchableSelect
               testid={`${testid}-filter-${f.name}`}
-              className="mt-1 bg-white"
+              className="mt-1.5 bg-white"
               value={filterVals[f.name]}
               onValueChange={(v) => setFilterVals((s) => ({ ...s, [f.name]: v }))}
               options={[{ value: "all", label: f.allLabel || `All ${f.label}` }, ...optionsFor(f, {})]}
             />
           </div>
         ))}
-        <div className="relative w-full max-w-xs">
+        <div className="relative w-full sm:max-w-xs">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             data-testid={`${testid}-search`}
-            className="pl-8 bg-white"
+            className="bg-white pl-8"
             placeholder="Search..."
             value={term}
             onChange={(e) => setTerm(e.target.value)}
           />
         </div>
-        <span className="pb-2 text-xs text-muted-foreground">{filtered.length} records</span>
+        <span className="pb-2 text-xs text-muted-foreground" data-testid={`${testid}-count`}>
+          {filtered.length} records
+        </span>
       </div>
 
       <DataTable
@@ -403,97 +434,108 @@ export const CrudPage = ({
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white">
+        <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto bg-white">
           <DialogHeader>
             <DialogTitle className="font-head">
               {editing ? `Edit ${title}` : `Add ${title}`}
             </DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
-            {fields.map((f) => (
-              <div key={f.name} className={f.full ? "sm:col-span-2" : ""}>
-                <Label className="text-xs font-medium">{f.label}</Label>
-                {f.type === "select" ? (
-                  <div className="mt-1">
-                    <SearchableSelect
-                      testid={`${testid}-field-${f.name}`}
-                      value={form[f.name] ? String(form[f.name]) : ""}
-                      onValueChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))}
-                      options={optionsFor(f)}
-                      placeholder={`Select ${f.label}`}
+            {fields.map((f) => {
+              const err = errors[f.name];
+              return (
+                <div key={f.name} className={f.full ? "sm:col-span-2" : ""}>
+                  <Label className="text-xs font-semibold text-foreground/80">
+                    {f.label}
+                    {f.required && <span className="ml-0.5 text-destructive">*</span>}
+                  </Label>
+                  {f.type === "select" ? (
+                    <div className="mt-1.5">
+                      <SearchableSelect
+                        testid={`${testid}-field-${f.name}`}
+                        className={errorClass(err)}
+                        value={form[f.name] ? String(form[f.name]) : ""}
+                        onValueChange={(v) => setField(f.name, v)}
+                        options={optionsFor(f)}
+                        placeholder={`Select ${f.label}`}
+                      />
+                    </div>
+                  ) : f.type === "multiselect" ? (
+                    <div className="mt-1.5 flex flex-wrap gap-2" data-testid={`${testid}-field-${f.name}`}>
+                      {optionsFor(f).map((o) => {
+                        const selected = (form[f.name] || []).includes(o.value);
+                        return (
+                          <button
+                            type="button"
+                            key={o.value}
+                            data-testid={`${testid}-${f.name}-${o.value}`}
+                            onClick={() => {
+                              const cur = form[f.name] || [];
+                              setField(
+                                f.name,
+                                selected ? cur.filter((x) => x !== o.value) : [...cur, o.value]
+                              );
+                            }}
+                            className={`rounded-sm border px-3 py-1.5 text-sm transition-colors duration-200 ${
+                              selected
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:border-primary"
+                            }`}
+                          >
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : f.type === "customfields" ? (
+                    <CustomFieldsEditor
+                      testid={testid}
+                      value={form[f.name]}
+                      onChange={(v) => setField(f.name, v)}
                     />
-                  </div>
-                ) : f.type === "multiselect" ? (
-                  <div className="mt-1 flex flex-wrap gap-2" data-testid={`${testid}-field-${f.name}`}>
-                    {optionsFor(f).map((o) => {
-                      const selected = (form[f.name] || []).includes(o.value);
-                      return (
-                        <button
-                          type="button"
-                          key={o.value}
-                          data-testid={`${testid}-${f.name}-${o.value}`}
-                          onClick={() =>
-                            setForm((s) => {
-                              const cur = s[f.name] || [];
-                              return {
-                                ...s,
-                                [f.name]: selected ? cur.filter((x) => x !== o.value) : [...cur, o.value],
-                              };
-                            })
-                          }
-                          className={`border px-3 py-1.5 text-sm transition-colors duration-200 ${
-                            selected
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border text-muted-foreground hover:border-primary"
-                          }`}
-                        >
-                          {o.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : f.type === "customfields" ? (
-                  <CustomFieldsEditor
-                    testid={testid}
-                    value={form[f.name]}
-                    onChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))}
-                  />
-                ) : f.type === "textarea" ? (
-                  <Textarea
-                    data-testid={`${testid}-field-${f.name}`}
-                    className="mt-1"
-                    value={form[f.name]}
-                    onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
-                  />
-                ) : (
-                  <Input
-                    data-testid={`${testid}-field-${f.name}`}
-                    className="mt-1"
-                    type={f.type || "text"}
-                    value={form[f.name]}
-                    onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
-                  />
-                )}
-              </div>
-            ))}
+                  ) : f.type === "textarea" ? (
+                    <Textarea
+                      data-testid={`${testid}-field-${f.name}`}
+                      className={`mt-1.5 ${errorClass(err)}`}
+                      value={form[f.name]}
+                      onChange={(e) => setField(f.name, e.target.value)}
+                    />
+                  ) : (
+                    <Input
+                      data-testid={`${testid}-field-${f.name}`}
+                      className={`mt-1.5 ${errorClass(err)}`}
+                      type={f.type || "text"}
+                      placeholder={f.placeholder}
+                      min={f.type === "number" ? 0 : undefined}
+                      value={form[f.name]}
+                      onChange={(e) => setField(f.name, e.target.value)}
+                    />
+                  )}
+                  {!err && f.hint && <p className="mt-1.5 text-xs text-muted-foreground">{f.hint}</p>}
+                  <FieldError message={err} testid={`${testid}-field-${f.name}-error`} />
+                </div>
+              );
+            })}
             {customFields.length > 0 && (
-              <div className="sm:col-span-2 border-t border-border pt-3" data-testid={`${testid}-custom-section`}>
+              <div className="border-t border-border pt-3 sm:col-span-2" data-testid={`${testid}-custom-section`}>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Category Details
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {customFields.map((cf) => (
                     <div key={cf.key}>
-                      <Label className="text-xs font-medium">{cf.label}</Label>
+                      <Label className="text-xs font-semibold text-foreground/80">{cf.label}</Label>
                       <Input
                         data-testid={`${testid}-custom-${cf.key}`}
-                        className="mt-1"
+                        className={`mt-1.5 ${errorClass(errors[`custom.${cf.key}`])}`}
                         type={cf.type === "number" ? "number" : "text"}
                         value={form.custom?.[cf.key] ?? ""}
-                        onChange={(e) =>
-                          setForm((s) => ({ ...s, custom: { ...(s.custom || {}), [cf.key]: e.target.value } }))
-                        }
+                        onChange={(e) => {
+                          setForm((s) => ({ ...s, custom: { ...(s.custom || {}), [cf.key]: e.target.value } }));
+                          setErrors((s) => ({ ...s, [`custom.${cf.key}`]: "" }));
+                        }}
                       />
+                      <FieldError message={errors[`custom.${cf.key}`]} />
                     </div>
                   ))}
                 </div>
@@ -502,7 +544,7 @@ export const CrudPage = ({
             {rateWarning && (
               <div
                 data-testid={`${testid}-rate-alert`}
-                className="sm:col-span-2 border-l-2 border-secondary bg-secondary/10 px-4 py-3"
+                className="border-l-2 border-secondary bg-secondary/10 px-4 py-3 sm:col-span-2"
               >
                 <p className="font-head text-sm font-semibold text-secondary">
                   Rate is {Math.abs(rateWarning.diff)}% {rateWarning.high ? "above" : "below"} the recent average
@@ -514,7 +556,7 @@ export const CrudPage = ({
               </div>
             )}
             {computeAmount && (
-              <div className="sm:col-span-2 border border-primary/20 bg-primary/5 px-4 py-3">
+              <div className="rounded-sm border border-primary/20 bg-primary/5 px-4 py-3 sm:col-span-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Taxable Amount</span>
                   <span
@@ -543,11 +585,12 @@ export const CrudPage = ({
               </div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setOpen(false)} data-testid={`${testid}-cancel-btn`}>
               Cancel
             </Button>
-            <Button onClick={save} data-testid={`${testid}-save-btn`}>
+            <Button onClick={save} disabled={saving} className="gap-2" data-testid={`${testid}-save-btn`}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {editing ? "Update" : "Save"}
             </Button>
           </DialogFooter>
@@ -562,12 +605,13 @@ export const CrudPage = ({
           <p className="text-sm text-muted-foreground">
             This permanently removes the record and any linked ledger entry.
           </p>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setConfirmRow(null)} data-testid={`${testid}-delete-cancel`}>
               Cancel
             </Button>
             <Button
               variant="destructive"
+              disabled={deleting}
               data-testid={`${testid}-delete-confirm`}
               onClick={() => remove(confirmRow)}
             >
@@ -584,8 +628,8 @@ export const StatusBadge = ({ status }) => (
   <Badge
     className={
       status === "closed"
-        ? "bg-secondary/15 text-secondary hover:bg-secondary/15 rounded-full"
-        : "bg-primary/10 text-primary hover:bg-primary/10 rounded-full"
+        ? "rounded-full bg-secondary/15 text-secondary hover:bg-secondary/15"
+        : "rounded-full bg-primary/10 text-primary hover:bg-primary/10"
     }
   >
     {status === "closed" ? "Closed" : "Active"}

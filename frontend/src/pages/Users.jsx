@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { KeyRound, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { validateForm } from "@/lib/validate";
 import { DataTable, PageHeader } from "@/components/Shell";
+import { FormField, errorClass } from "@/components/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +22,8 @@ const Users = () => {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(blank);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
   const [confirmRow, setConfirmRow] = useState(null);
 
   const load = useCallback(() => {
@@ -38,7 +41,25 @@ const Users = () => {
     load();
   }, [load]);
 
+  const set = (k) => (e) => {
+    setForm((s) => ({ ...s, [k]: e.target.value }));
+    setErrors((s) => ({ ...s, [k]: "" }));
+  };
+
   const save = async () => {
+    const spec = [
+      { name: "name", label: "Name", required: true, minLength: 2 },
+      { name: "email", label: "Email", required: true, rule: "email" },
+      { name: "password", label: "Password", required: !editing, minLength: 6 },
+    ];
+    const errs = validateForm(spec, form);
+    if (form.role === "custom" && !form.role_id) errs.role = "Select a role";
+    setErrors(errs);
+    if (Object.keys(errs).length) {
+      toast.error("Please fix the highlighted fields");
+      return;
+    }
+    setSaving(true);
     try {
       if (editing) await api.put(`/users/${editing.id}`, form);
       else await api.post("/users", form);
@@ -48,6 +69,8 @@ const Users = () => {
       load();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -69,10 +92,11 @@ const Users = () => {
         subtitle="Admins get every screen. Operators use the entry screens only. Assign a custom role to control access feature-by-feature."
         action={
           <Button
-            className="gap-2"
+            className="h-10 w-full gap-2 sm:w-auto"
             data-testid="users-add-btn"
             onClick={() => {
               setEditing(null);
+              setErrors({});
               setForm(blank);
               setOpen(true);
             }}
@@ -94,15 +118,17 @@ const Users = () => {
             label: "Role",
             render: (r) => {
               const label =
-                r.role === "admin"
-                  ? "Admin"
-                  : r.role === "operator"
-                  ? "Operator"
-                  : roles.find((x) => x.id === r.role_id)?.name || "Custom Role";
+                r.role === "owner"
+                  ? "Owner"
+                  : r.role === "admin"
+                    ? "Admin"
+                    : r.role === "operator"
+                      ? "Operator"
+                      : roles.find((x) => x.id === r.role_id)?.name || "Custom Role";
               return (
                 <Badge
                   className={`rounded-full ${
-                    r.role === "admin"
+                    r.role === "admin" || r.role === "owner"
                       ? "bg-primary/10 text-primary hover:bg-primary/10"
                       : "bg-accent/25 text-accent-foreground hover:bg-accent/25"
                   }`}
@@ -123,7 +149,14 @@ const Users = () => {
               data-testid={`users-edit-${row.id}`}
               onClick={() => {
                 setEditing(row);
-                setForm({ name: row.name || "", email: row.email, password: "", role: row.role, role_id: row.role_id || "" });
+                setErrors({});
+                setForm({
+                  name: row.name || "",
+                  email: row.email,
+                  password: "",
+                  role: row.role,
+                  role_id: row.role_id || "",
+                });
                 setOpen(true);
               }}
             >
@@ -149,37 +182,34 @@ const Users = () => {
             <DialogTitle className="font-head">{editing ? "Edit Staff Account" : "Add Staff Account"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label className="text-xs">Name</Label>
+            <FormField label="Name" required error={errors.name} testid="users-field-name">
               <Input
                 data-testid="users-field-name"
-                className="mt-1"
+                className={errorClass(errors.name)}
                 value={form.name}
-                onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+                onChange={set("name")}
               />
-            </div>
-            <div>
-              <Label className="text-xs">Email (login)</Label>
+            </FormField>
+            <FormField label="Email (login)" required error={errors.email} testid="users-field-email">
               <Input
                 data-testid="users-field-email"
-                className="mt-1"
+                className={errorClass(errors.email)}
                 type="email"
                 disabled={!!editing}
                 value={form.email}
-                onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
+                onChange={set("email")}
               />
-            </div>
-            <div>
-              <Label className="text-xs">Role</Label>
+            </FormField>
+            <FormField label="Role" required error={errors.role} testid="users-field-role">
               <Select
                 value={form.role === "custom" ? form.role_id : form.role}
-                onValueChange={(v) =>
-                  v === "admin" || v === "operator"
-                    ? setForm((s) => ({ ...s, role: v, role_id: "" }))
-                    : setForm((s) => ({ ...s, role: "custom", role_id: v }))
-                }
+                onValueChange={(v) => {
+                  setErrors((s) => ({ ...s, role: "" }));
+                  if (v === "admin" || v === "operator") setForm((s) => ({ ...s, role: v, role_id: "" }));
+                  else setForm((s) => ({ ...s, role: "custom", role_id: v }));
+                }}
               >
-                <SelectTrigger data-testid="users-field-role" className="mt-1">
+                <SelectTrigger data-testid="users-field-role" className={errorClass(errors.role)}>
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent className="bg-white">
@@ -192,28 +222,35 @@ const Users = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label className="text-xs">{editing ? "New Password (optional)" : "Password"}</Label>
+            </FormField>
+            <FormField
+              label={editing ? "New Password (optional)" : "Password"}
+              required={!editing}
+              error={errors.password}
+              hint="At least 6 characters."
+              testid="users-field-password"
+            >
               <Input
                 data-testid="users-field-password"
-                className="mt-1"
+                className={errorClass(errors.password)}
                 type="password"
                 value={form.password}
-                onChange={(e) => setForm((s) => ({ ...s, password: e.target.value }))}
+                onChange={set("password")}
               />
-            </div>
+            </FormField>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setOpen(false)} data-testid="users-cancel-btn">
               Cancel
             </Button>
-            <Button onClick={save} data-testid="users-save-btn">
+            <Button onClick={save} disabled={saving} className="gap-2" data-testid="users-save-btn">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {editing ? "Update" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       <Dialog open={!!confirmRow} onOpenChange={() => setConfirmRow(null)}>
         <DialogContent className="max-w-md bg-white">
           <DialogHeader>
@@ -222,7 +259,7 @@ const Users = () => {
           <p className="text-sm text-muted-foreground">
             {confirmRow?.email} will no longer be able to sign in. Their recorded entries stay intact.
           </p>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setConfirmRow(null)} data-testid="users-delete-cancel">
               Cancel
             </Button>

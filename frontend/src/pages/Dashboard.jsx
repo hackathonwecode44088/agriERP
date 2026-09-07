@@ -19,7 +19,7 @@ const Dashboard = () => {
     <div data-testid="dashboard-page">
       <PageHeader title="Dashboard" subtitle="Business summary across every product category and party." />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid min-w-0 gap-4 [&>*]:min-w-0 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           testid="stat-receivable"
           label="Total Receivable"
@@ -69,7 +69,7 @@ const Dashboard = () => {
       <LowStockPanel />
       <ReorderPanel />
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-2">
+      <div className="mt-8 grid min-w-0 gap-6 [&>*]:min-w-0 xl:grid-cols-2">
         <div>
           <h2 className="font-head mb-3 flex items-center gap-2 text-base font-extrabold md:text-lg">
             <TrendingDown className="h-4 w-4 text-secondary" /> Recent Purchases

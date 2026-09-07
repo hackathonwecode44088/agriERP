@@ -4,6 +4,9 @@ import { Download, FileSpreadsheet, Mail, MessageCircle, Plus, Trash2 } from "lu
 import api, { errMsg, money } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { DataTable, PageHeader, StatCard } from "@/components/Shell";
+import { FormField, errorClass } from "@/components/FormField";
+import { SearchableSelect } from "@/components/SearchableSelect";
+import { validateForm } from "@/lib/validate";
 import { downloadLedgerPdf } from "@/lib/pdf";
 import { downloadExcel, mapRows } from "@/lib/excel";
 import { roleLabel } from "@/lib/constants";
@@ -30,7 +33,14 @@ const Ledger = () => {
   const [company, setCompany] = useState(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(blank);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+
+  const setField = (k, v) => {
+    setForm((s) => ({ ...s, [k]: v }));
+    setErrors((s) => ({ ...s, [k]: "", debit: k === "credit" ? "" : s.debit }));
+  };
 
   useEffect(() => {
     api.get("/parties").then(({ data }) => setParties(data)).catch(() => {});
@@ -56,6 +66,23 @@ const Ledger = () => {
   const partyName = party?.name || "";
 
   const save = async () => {
+    const errs = validateForm(
+      [
+        { name: "date", label: "Date", required: true, rule: "notFuture" },
+        { name: "particulars", label: "Particulars", required: true, minLength: 3 },
+        { name: "debit", label: "Debit", rule: "nonneg" },
+        { name: "credit", label: "Credit", rule: "nonneg" },
+      ],
+      form
+    );
+    if (!Number(form.debit || 0) && !Number(form.credit || 0))
+      errs.debit = "Enter a debit or a credit amount";
+    setErrors(errs);
+    if (Object.keys(errs).length) {
+      toast.error("Please fix the highlighted fields");
+      return;
+    }
+    setSaving(true);
     try {
       await api.post("/ledger", { ...form, party_id: partyId });
       toast.success("Ledger entry added");
@@ -64,6 +91,8 @@ const Ledger = () => {
       load();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -80,7 +109,7 @@ const Ledger = () => {
   const shareWhatsapp = () => {
     const t = data.totals;
     const text = [
-      `${company?.name || "Potato ERP"} — Account statement`,
+      `${company?.name || "AgriERP"} — Account statement`,
       `Party: ${partyName}`,
       `Total debit: ${t.debit}`,
       `Total credit: ${t.credit}`,
@@ -179,19 +208,20 @@ const Ledger = () => {
       />
 
       <div className="mb-6 max-w-sm">
-        <Label className="text-xs">Select Party</Label>
-        <Select value={partyId} onValueChange={setPartyId}>
-          <SelectTrigger data-testid="ledger-party-select" className="mt-1 bg-white">
-            <SelectValue placeholder="Choose a party" />
-          </SelectTrigger>
-          <SelectContent className="bg-white">
-            {parties.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name} {p.roles?.length ? `· ${p.roles.map(roleLabel).join(", ")}` : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Label className="text-xs font-semibold text-foreground/80">Select Party</Label>
+        <div className="mt-1.5">
+          <SearchableSelect
+            testid="ledger-party-select"
+            className="bg-white"
+            value={partyId}
+            onValueChange={setPartyId}
+            placeholder="Choose a party"
+            options={parties.map((p) => ({
+              value: p.id,
+              label: `${p.name}${p.roles?.length ? ` · ${p.roles.map(roleLabel).join(", ")}` : ""}`,
+            }))}
+          />
+        </div>
       </div>
 
       {data && (
@@ -242,20 +272,18 @@ const Ledger = () => {
             <DialogTitle className="font-head">Add Ledger Entry — {partyName}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label className="text-xs">Date</Label>
+            <FormField label="Date" required error={errors.date} testid="ledger-field-date">
               <Input
                 data-testid="ledger-field-date"
                 type="date"
-                className="mt-1"
+                className={errorClass(errors.date)}
                 value={form.date}
-                onChange={(e) => setForm((s) => ({ ...s, date: e.target.value }))}
+                onChange={(e) => setField("date", e.target.value)}
               />
-            </div>
-            <div>
-              <Label className="text-xs">Payment Mode</Label>
-              <Select value={form.payment_mode} onValueChange={(v) => setForm((s) => ({ ...s, payment_mode: v }))}>
-                <SelectTrigger data-testid="ledger-field-mode" className="mt-1">
+            </FormField>
+            <FormField label="Payment Mode" required testid="ledger-field-mode">
+              <Select value={form.payment_mode} onValueChange={(v) => setField("payment_mode", v)}>
+                <SelectTrigger data-testid="ledger-field-mode">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-white">
@@ -264,43 +292,49 @@ const Ledger = () => {
                   <SelectItem value="cheque">Cheque</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="sm:col-span-2">
-              <Label className="text-xs">Particulars</Label>
+            </FormField>
+            <FormField
+              label="Particulars"
+              required
+              error={errors.particulars}
+              className="sm:col-span-2"
+              testid="ledger-field-particulars"
+            >
               <Input
                 data-testid="ledger-field-particulars"
-                className="mt-1"
+                className={errorClass(errors.particulars)}
+                placeholder="e.g. Opening balance adjustment"
                 value={form.particulars}
-                onChange={(e) => setForm((s) => ({ ...s, particulars: e.target.value }))}
+                onChange={(e) => setField("particulars", e.target.value)}
               />
-            </div>
-            <div>
-              <Label className="text-xs">Debit (party owes)</Label>
+            </FormField>
+            <FormField label="Debit (party owes)" error={errors.debit} testid="ledger-field-debit">
               <Input
                 data-testid="ledger-field-debit"
                 type="number"
-                className="mt-1"
+                min={0}
+                className={errorClass(errors.debit)}
                 value={form.debit}
-                onChange={(e) => setForm((s) => ({ ...s, debit: e.target.value }))}
+                onChange={(e) => setField("debit", e.target.value)}
               />
-            </div>
-            <div>
-              <Label className="text-xs">Credit (you owe / received)</Label>
+            </FormField>
+            <FormField label="Credit (you owe / received)" error={errors.credit} testid="ledger-field-credit">
               <Input
                 data-testid="ledger-field-credit"
                 type="number"
-                className="mt-1"
+                min={0}
+                className={errorClass(errors.credit)}
                 value={form.credit}
-                onChange={(e) => setForm((s) => ({ ...s, credit: e.target.value }))}
+                onChange={(e) => setField("credit", e.target.value)}
               />
-            </div>
+            </FormField>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setOpen(false)} data-testid="ledger-cancel-btn">
               Cancel
             </Button>
-            <Button onClick={save} data-testid="ledger-save-btn">
-              Save Entry
+            <Button onClick={save} disabled={saving} data-testid="ledger-save-btn">
+              {saving ? "Saving..." : "Save Entry"}
             </Button>
           </DialogFooter>
         </DialogContent>

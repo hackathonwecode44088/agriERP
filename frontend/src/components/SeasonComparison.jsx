@@ -44,7 +44,7 @@ export const SeasonComparison = () => {
       <h2 className="font-head mb-3 flex items-center gap-2 text-base font-extrabold md:text-lg">
         <CalendarRange className="h-4 w-4 text-secondary" /> Season Comparison
       </h2>
-      <div className="overflow-x-auto border border-border bg-white">
+      <div className="w-full max-w-full overflow-x-auto border border-border bg-white">
         <table className="w-full min-w-[600px]">
           <thead>
             <tr className="border-b border-border bg-muted/60 text-xs uppercase tracking-wider text-muted-foreground">

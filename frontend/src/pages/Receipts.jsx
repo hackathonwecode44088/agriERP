@@ -6,6 +6,8 @@ import { PAYMENT_MODES, roleLabel } from "@/lib/constants";
 import { nameOf } from "@/components/Shell";
 import { Badge } from "@/components/ui/badge";
 
+const TODAY = new Date().toISOString().slice(0, 10);
+
 const Receipts = () => {
   const [out, setOut] = useState(null);
   const [tick, setTick] = useState(0);
@@ -42,7 +44,7 @@ const Receipts = () => {
         searchKeys={["receipt_no", "against_invoice", "notes"]}
         filters={[{ name: "party_id", label: "Party", allLabel: "All Parties", optionsFrom: "parties" }]}
         fields={[
-          { name: "date", label: "Date", type: "date" },
+          { name: "date", label: "Date", type: "date", default: TODAY, required: true, rule: "notFuture" },
           {
             name: "direction",
             label: "Direction",
@@ -52,10 +54,18 @@ const Receipts = () => {
               { value: "paid", label: "Paid out (money out)" },
             ],
             default: "received",
+            required: true,
           },
-          { name: "party_id", label: "Party", type: "select", optionsFrom: "parties" },
-          { name: "amount", label: "Amount", type: "number" },
-          { name: "payment_mode", label: "Payment Mode", type: "select", options: PAYMENT_MODES, default: "cash" },
+          { name: "party_id", label: "Party", type: "select", optionsFrom: "parties", required: true },
+          { name: "amount", label: "Amount", type: "number", required: true, rule: "positive" },
+          {
+            name: "payment_mode",
+            label: "Payment Mode",
+            type: "select",
+            options: PAYMENT_MODES,
+            default: "cash",
+            required: true,
+          },
           { name: "cheque_no", label: "Cheque / Ref No." },
           { name: "against_invoice", label: "Against Invoice No." },
           { name: "notes", label: "Notes", type: "textarea", full: true },

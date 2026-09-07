@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import api, { errMsg } from "@/lib/api";
 import { DataTable, PageHeader } from "@/components/Shell";
+import { FormField, errorClass } from "@/components/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +38,8 @@ const Roles = () => {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [name, setName] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [permsState, setPermsState] = useState({});
   const [confirmRow, setConfirmRow] = useState(null);
 
@@ -57,12 +60,14 @@ const Roles = () => {
   const openCreate = () => {
     setEditing(null);
     setName("");
+    setNameError("");
     setPermsState({});
     setOpen(true);
   };
   const openEdit = (row) => {
     setEditing(row);
     setName(row.name);
+    setNameError("");
     setPermsState(row.permissions || {});
     setOpen(true);
   };
@@ -86,8 +91,17 @@ const Roles = () => {
   };
 
   const save = async () => {
+    if (!name.trim() || name.trim().length < 2) {
+      setNameError("Role name must be at least 2 characters");
+      return;
+    }
+    if (!Object.keys(permsState).length) {
+      toast.error("Select at least one feature permission");
+      return;
+    }
+    setSaving(true);
     try {
-      const payload = { name, permissions: permsState };
+      const payload = { name: name.trim(), permissions: permsState };
       if (editing) await api.put(`/roles/${editing.id}`, payload);
       else await api.post("/roles", payload);
       toast.success(editing ? "Role updated" : "Role created");
@@ -95,6 +109,8 @@ const Roles = () => {
       load();
     } catch (e) {
       toast.error(errMsg(e));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -115,7 +131,7 @@ const Roles = () => {
         title="Roles & Permissions"
         subtitle="Create custom staff roles. Tick exactly which features each role can use and what they can do — view, create, edit or delete."
         action={
-          <Button className="gap-2" data-testid="roles-add-btn" onClick={openCreate}>
+          <Button className="h-10 w-full gap-2 sm:w-auto" data-testid="roles-add-btn" onClick={openCreate}>
             <Plus className="h-4 w-4" /> New Role
           </Button>
         }
@@ -175,17 +191,20 @@ const Roles = () => {
               {editing ? "Edit Role" : "New Role"}
             </DialogTitle>
           </DialogHeader>
-          <div>
-            <Label className="text-xs">Role Name</Label>
+          <FormField label="Role Name" required error={nameError} testid="roles-field-name">
             <Input
               data-testid="roles-field-name"
-              className="mt-1"
+              className={errorClass(nameError)}
               placeholder="e.g. Accountant, Counter Staff"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                setNameError("");
+              }}
             />
-          </div>
-          <div className="mt-2 border border-border">
+          </FormField>
+          <div className="mt-2 w-full max-w-full overflow-x-auto rounded-sm border border-border">
+            <div className="min-w-[420px]">
             <div className="grid grid-cols-[1fr_repeat(4,60px)] items-center border-b border-border bg-muted/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               <span>Feature</span>
               {OPS.map((op) => (
@@ -215,13 +234,14 @@ const Roles = () => {
                 ))}
               </div>
             ))}
+            </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setOpen(false)} data-testid="roles-cancel-btn">
               Cancel
             </Button>
-            <Button onClick={save} data-testid="roles-save-btn">
-              {editing ? "Update" : "Create"}
+            <Button onClick={save} disabled={saving} data-testid="roles-save-btn">
+              {saving ? "Saving..." : editing ? "Update" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>

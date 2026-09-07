@@ -140,12 +140,12 @@ async def get_scope(request: Request, user: dict = Depends(get_current_user)) ->
         raise HTTPException(status_code=403, detail="Platform accounts cannot access tenant data")
     tenant_id = user.get("tenant_id")
     if not tenant_id:
-        raise HTTPException(status_code=403, detail="No workspace linked to this account")
+        raise HTTPException(status_code=403, detail="No business linked to this account")
     tenant = await db.tenants.find_one({"_id": oid(tenant_id)})
     if not tenant:
-        raise HTTPException(status_code=403, detail="Workspace not found")
+        raise HTTPException(status_code=403, detail="Business not found")
     if tenant.get("status") == "suspended":
-        raise HTTPException(status_code=402, detail="This workspace is suspended. Contact support to reactivate.")
+        raise HTTPException(status_code=402, detail="This business is suspended. Contact support to reactivate.")
     if tenant.get("plan_expires") and tenant["plan_expires"] < now_iso()[:10]:
         raise HTTPException(status_code=402, detail="Your subscription has expired. Renew to continue.")
 

@@ -3,6 +3,8 @@ import { Download, IndianRupee } from "lucide-react";
 import { toast } from "sonner";
 import api, { errMsg, money } from "@/lib/api";
 import { DataTable, PageHeader } from "@/components/Shell";
+import { FormField, errorClass } from "@/components/FormField";
+import { validateForm } from "@/lib/validate";
 import { downloadInvoicePdf } from "@/lib/pdf";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +21,11 @@ const Invoices = () => {
   const [company, setCompany] = useState(null);
   const [payFor, setPayFor] = useState(null);
   const [payForm, setPayForm] = useState({ amount: "", date: "", payment_mode: "cash", cheque_no: "" });
+  const [payErrors, setPayErrors] = useState({});
+  const setPay = (k, v) => {
+    setPayForm((s) => ({ ...s, [k]: v }));
+    setPayErrors((s) => ({ ...s, [k]: "" }));
+  };
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -57,6 +64,7 @@ const Invoices = () => {
 
   const openPayment = (row) => {
     setPayFor(row);
+    setPayErrors({});
     setPayForm({
       amount: String(row.balance_amount ?? ""),
       date: new Date().toISOString().slice(0, 10),
@@ -66,6 +74,22 @@ const Invoices = () => {
   };
 
   const savePayment = async () => {
+    const errs = validateForm(
+      [
+        { name: "amount", label: "Amount", required: true, rule: "positive" },
+        { name: "date", label: "Date", required: true, rule: "notFuture" },
+      ],
+      payForm
+    );
+    if (!errs.amount && Number(payForm.amount) > Number(payFor?.balance_amount || 0))
+      errs.amount = `Cannot exceed the outstanding ${money(payFor?.balance_amount)}`;
+    if (payForm.payment_mode === "cheque" && !payForm.cheque_no.trim())
+      errs.cheque_no = "Cheque number is required for cheque payments";
+    setPayErrors(errs);
+    if (Object.keys(errs).length) {
+      toast.error("Please fix the highlighted fields");
+      return;
+    }
     setSaving(true);
     try {
       const endpoint = payFor.doc_type === "sale" ? "sales" : "purchases";
@@ -198,33 +222,28 @@ const Invoices = () => {
             {money(payFor?.balance_amount)}
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label className="text-xs">Amount</Label>
+            <FormField label="Amount" required error={payErrors.amount} testid="invoice-pay-amount">
               <Input
                 data-testid="invoice-pay-amount"
                 type="number"
-                className="mt-1"
+                min={0}
+                className={errorClass(payErrors.amount)}
                 value={payForm.amount}
-                onChange={(e) => setPayForm((s) => ({ ...s, amount: e.target.value }))}
+                onChange={(e) => setPay("amount", e.target.value)}
               />
-            </div>
-            <div>
-              <Label className="text-xs">Date</Label>
+            </FormField>
+            <FormField label="Date" required error={payErrors.date} testid="invoice-pay-date">
               <Input
                 data-testid="invoice-pay-date"
                 type="date"
-                className="mt-1"
+                className={errorClass(payErrors.date)}
                 value={payForm.date}
-                onChange={(e) => setPayForm((s) => ({ ...s, date: e.target.value }))}
+                onChange={(e) => setPay("date", e.target.value)}
               />
-            </div>
-            <div>
-              <Label className="text-xs">Payment Mode</Label>
-              <Select
-                value={payForm.payment_mode}
-                onValueChange={(v) => setPayForm((s) => ({ ...s, payment_mode: v }))}
-              >
-                <SelectTrigger data-testid="invoice-pay-mode" className="mt-1">
+            </FormField>
+            <FormField label="Payment Mode" required testid="invoice-pay-mode">
+              <Select value={payForm.payment_mode} onValueChange={(v) => setPay("payment_mode", v)}>
+                <SelectTrigger data-testid="invoice-pay-mode">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-white">
@@ -233,18 +252,22 @@ const Invoices = () => {
                   <SelectItem value="cheque">Cheque</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Cheque / Ref No.</Label>
+            </FormField>
+            <FormField
+              label="Cheque / Ref No."
+              required={payForm.payment_mode === "cheque"}
+              error={payErrors.cheque_no}
+              testid="invoice-pay-ref"
+            >
               <Input
                 data-testid="invoice-pay-ref"
-                className="mt-1"
+                className={errorClass(payErrors.cheque_no)}
                 value={payForm.cheque_no}
-                onChange={(e) => setPayForm((s) => ({ ...s, cheque_no: e.target.value }))}
+                onChange={(e) => setPay("cheque_no", e.target.value)}
               />
-            </div>
+            </FormField>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setPayFor(null)} data-testid="invoice-pay-cancel">
               Cancel
             </Button>
