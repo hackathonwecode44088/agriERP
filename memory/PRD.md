@@ -35,6 +35,9 @@
 - **It. 7 (2026-06)** Unified `parties` with multi-role buy+sell netting into one ledger; editable category master + single Products / Purchases / Sales / Stock / Lot screens; universal receivable/payable outstanding; partial payments on purchase vouchers too; obsolete farmer/vendor/company endpoints removed; data reset via `reset_data.py`
 - Verified: backend 42/42 (`backend/tests/test_iteration7.py`, run with `-n 0`), full frontend smoke incl. role gating
 
+- **It. 8 (2026-06) — Multi-tenant SaaS pivot**: landing page removed (`/` → Login), 3-step signup onboarding (workspace → first company → owner account), `scoping.py` `ScopedDB` stamping/filtering `tenant_id` + `company_id` on every data collection (parties & counters are tenant-wide, everything else company-scoped), multiple companies per tenant with sidebar switcher (`X-Company-Id` header), plans (trial 1co/3users free · basic 2/5 ₹999 · pro 5/20 ₹2499) with 402 upgrade prompts, super-admin Platform Console at `/platform` (stats, MRR, plan/expiry edit, extend days, suspend/reactivate, delete tenant), suspension & expiry blocking with 402, superadmin↔tenant cross-access blocked (403)
+- Verified It. 8: backend 26/26 (`backend/tests/test_saas_multitenant.py`, run with `-n 0`) + frontend smoke (signup→dashboard, company switcher, plan cap, platform console). Obsolete `test_iteration7.py` removed (pre-SaaS creds no longer seeded)
+
 ## Backlog
 - P2: Split `server.py` (~1,200 lines) into a `routers/` package
 - P2: `/api/outstanding` via an aggregation pipeline instead of Python loops
@@ -43,6 +46,9 @@
 - P3: Lot trace groups blank lot numbers under "(no lot)"
 
 ## Next Tasks
-1. Router split for maintainability
-2. Per-category custom fields (e.g. cold-storage rent, grading)
-3. Party-wise price lists / default rates
+1. P0 Party price lists — party-wise agreed rates auto-filling purchase/sale entry
+2. P1 Per-category custom fields (e.g. cold-storage rent, grading)
+3. P1 Party merge tool — detect duplicates, merge ledgers without losing history
+4. P1 Quick entry mode — keyboard-only fast entry screen for busy season
+5. P2 Router split (`server.py` ~1,240 lines → `routers/platform.py`, `routers/cron.py`)
+6. P2 Plan downgrade guard; drop the unused login cookie; self-heal default categories

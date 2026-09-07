@@ -1,0 +1,38 @@
+{
+  "summary": "Multi-tenant SaaS pivot verified end-to-end. Wrote /app/backend/tests/test_saas_multitenant.py (26 tests, 26/26 pass in 9.6s) covering: signup wizard (workspace + company + owner + trial plan + 14-day expiry + returns access_token), /auth/me shape, duplicate-email/short-password/missing-workspace validation, login 401, cross-tenant isolation (parties, categories) between two freshly-signed-up tenants, trial 1-company cap returning 402, super-admin plan upgrade to 'pro' via PUT /api/platform/tenants/{id} then successful 2nd-company creation, company-scoped products empty in the new company while parties are shared tenant-wide (TENANT_ONLY scoping working), suspend/reactivate flow returning 402 with 'suspend' message and restoring 200 after reactivation, super-admin blocked from /api/parties (403), tenant user blocked from /api/platform/* (403), platform /stats /tenants /plans + extend_days working, full ERP flow within a tenant (parties/categories/products/godowns/purchases/sales/stock-validation-oversell/ledger/receipts/invoices/reports/dashboard), operator role gating (200 on masters, 403 on ledger/receipts/invoices/reports/users), and trial max_users=3 enforced with 402 on the 4th user. Playwright UI smoke: / renders Login (no landing page), /signup 3-step wizard creates workspace and lands on /admin/dashboard with company-switcher + company-select visible, trial 2nd-company attempt from /admin/companies triggers 402 upgrade message, super-admin login lands on /platform showing the tenants table with the newly-created workspace. Logout redirect goes to '/' (which renders Login) — same visual result as /login but the test-selector was strict; NOT a functional bug.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_saas_multitenant.py",
+    "/app/test_reports/pytest/iteration8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "get_scope silently falls back to 'any company under the tenant' when X-Company-Id is missing or invalid — safe but hides bugs; consider returning 400 when the header is present but doesn't resolve to a company (currently we just ignore it).",
+    "DEFAULT_CATEGORIES are seeded per-company on signup and on POST /api/companies but there is no self-heal if an owner deletes them; consider upserting-by-name so a company always has at least the three defaults.",
+    "PLANS 'basic' has max_companies=2 but the trial->pro upgrade path is fine; there is no downgrade guard — if superadmin moves 'pro' tenant with 3 companies back to 'basic', /api/companies would keep working but count>max_companies won't be re-enforced retroactively; acceptable for MVP but worth a note.",
+    "server.py is now ~1240 lines; the platform (superadmin) and cron blocks could be split into /app/backend/routers/platform.py and cron.py for maintainability.",
+    "login sets an httpOnly cookie AND returns the token in JSON — frontend uses the JSON token via Authorization header, so the cookie is unused; either wire it into scoping.get_current_user as a fallback or drop the cookie to reduce attack surface.",
+    "Signup does NOT set the cookie, only login does; if you plan to rely on cookie auth later, add response.set_cookie to /auth/signup too."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_saas_multitenant.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (26/26)",
+    "frontend": "87% (7/8 UI checks; the 1 fail is a test-selector strictness, not a real bug)"
+  },
+  "test_credentials": "Super admin: platform@potatoerp.com / Platform@123. Tenants are auto-created per test-run via /signup; test file uses uuid4 emails and does not clean them up (each run adds ~4 new tenants + a handful of users).",
+  "seed_data_creation": "Backend tests create fresh tenants via /signup each run (uuid-suffixed emails). One tenant is auto-upgraded to 'pro' plan mid-run to unblock the multi-company test. No cleanup — safe because rows are uuid-scoped, but the tenants table will grow over time.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `python -m pytest /app/backend/tests/test_saas_multitenant.py -v -n 0` (pytest.ini forces xdist which breaks the ordered fixture chain; use -n 0 for serial). Tests share module-scoped tenant_a/tenant_b fixtures and the class order matters (TestPlanLimits upgrades tenant_a to pro; TestSuspensionFlow toggles tenant_b). The old test_iteration7.py from the pre-SaaS build is kept but its admin@potatoerp.com / operator@potatoerp.com credentials are no longer seeded — that file will fail wholesale now and should be considered obsolete.",
+  "rca of the issue": "N/A — no functional failures."
+}

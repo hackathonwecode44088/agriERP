@@ -3,8 +3,10 @@ import { Toaster } from "sonner";
 import "@/App.css";
 import { AuthProvider } from "@/context/AuthContext";
 import AdminLayout from "@/components/AdminLayout";
-import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
+import Signup from "@/pages/Signup";
+import Platform from "@/pages/Platform";
+import Companies from "@/pages/Companies";
 import Dashboard from "@/pages/Dashboard";
 import Parties from "@/pages/Parties";
 import Categories from "@/pages/Categories";
@@ -28,12 +30,15 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<Login />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/platform" element={<Platform />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="parties" element={<Parties />} />
+              <Route path="companies" element={<Companies />} />
               <Route path="categories" element={<Categories />} />
               <Route path="products" element={<Products />} />
               <Route path="godowns" element={<Godowns />} />

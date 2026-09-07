@@ -3,7 +3,7 @@ import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from "react
 import {
   BarChart3,
   CalendarClock,
-  ChevronLeft,
+  Building2,
   FileText,
   Gauge,
   Layers,
@@ -28,6 +28,7 @@ const NAV = [
     group: "Masters",
     items: [
       { to: "/admin/parties", label: "Parties", icon: Users },
+      { to: "/admin/companies", label: "Companies", icon: Layers },
       { to: "/admin/categories", label: "Product Categories", icon: Layers },
       { to: "/admin/products", label: "Products", icon: Package },
       { to: "/admin/godowns", label: "Godown / Cold Storage", icon: Warehouse },
@@ -76,7 +77,7 @@ const ADMIN_PATHS = [
 ];
 
 const AdminLayout = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, tenant, companies, companyId, switchCompany } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -89,7 +90,7 @@ const AdminLayout = () => {
     );
   if (user === false) return <Navigate to="/login" replace />;
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "owner";
   const nav = NAV.filter((g) => isAdmin || !g.adminOnly);
   const blocked = !isAdmin && ADMIN_PATHS.some((p) => location.pathname.startsWith(p));
 
@@ -103,6 +104,26 @@ const AdminLayout = () => {
         <button className="lg:hidden" onClick={() => setOpen(false)} data-testid="sidebar-close">
           <X className="h-5 w-5" />
         </button>
+      </div>
+      <div className="border-b border-white/10 px-4 py-3" data-testid="company-switcher">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">
+          {tenant?.name || "Workspace"} · {tenant?.plan || "trial"}
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          <Building2 className="h-4 w-4 shrink-0 text-accent" />
+          <select
+            data-testid="company-select"
+            value={companyId || ""}
+            onChange={(e) => switchCompany(e.target.value)}
+            className="w-full bg-transparent text-sm text-white outline-none"
+          >
+            {companies.map((c) => (
+              <option key={c.id} value={c.id} className="text-black">
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-4">
         {nav.map((g) => (
@@ -163,13 +184,6 @@ const AdminLayout = () => {
           <span className="font-head text-sm font-extrabold">Potato ERP</span>
         </header>
         <div className="p-4 sm:p-6 lg:p-8">
-          <Link
-            to="/"
-            className="mb-4 inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors duration-200 hover:text-primary"
-            data-testid="back-to-site"
-          >
-            <ChevronLeft className="h-3 w-3" /> Back to website
-          </Link>
           {blocked ? (
             <div data-testid="access-restricted" className="border border-border bg-white p-12 text-center">
               <h1 className="font-head text-2xl font-extrabold">Access restricted</h1>

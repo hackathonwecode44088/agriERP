@@ -16,7 +16,8 @@ const Login = () => {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (user && user !== false) navigate("/admin/dashboard", { replace: true });
+    if (user && user !== false)
+      navigate(user.role === "superadmin" ? "/platform" : "/admin/dashboard", { replace: true });
   }, [user, navigate]);
 
   const submit = async (e) => {
@@ -24,8 +25,8 @@ const Login = () => {
     setBusy(true);
     setError("");
     try {
-      await login(email, password);
-      navigate("/admin/dashboard", { replace: true });
+      const u = await login(email, password);
+      navigate(u.role === "superadmin" ? "/platform" : "/admin/dashboard", { replace: true });
     } catch (err) {
       setError(errMsg(err));
     } finally {
@@ -46,28 +47,26 @@ const Login = () => {
             <br /> every rupee accounted.
           </h2>
           <p className="mt-6 max-w-sm text-sm text-white/60">
-            Seeds, leno bags, potato trading, farmer ledgers, cold-storage stock and invoices in a single admin
-            workspace.
+            Multi-company trading workspace — parties, purchases, sales, stock, ledgers and invoices in one place.
           </p>
         </div>
-        <p className="text-xs text-white/30">Admin access only</p>
+        <p className="text-xs text-white/30">Trusted by potato traders</p>
       </div>
 
       <div className="flex flex-1 items-center justify-center bg-[#FDFBF7] px-6 py-16">
         <form onSubmit={submit} className="w-full max-w-sm" data-testid="login-form">
-          <h1 className="font-head text-2xl font-extrabold">Admin Login</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Sign in to manage your business.</p>
+          <h1 className="font-head text-2xl font-extrabold">Sign in</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Welcome back. Enter your workspace credentials.</p>
 
           <div className="mt-8 space-y-4">
             <div>
-              <Label className="text-xs">User name (Email)</Label>
+              <Label className="text-xs">Email</Label>
               <Input
                 data-testid="login-email"
                 className="mt-1 bg-white"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@potatoerp.com"
                 required
               />
             </div>
@@ -85,7 +84,10 @@ const Login = () => {
           </div>
 
           {error && (
-            <p data-testid="login-error" className="mt-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <p
+              data-testid="login-error"
+              className="mt-4 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            >
               {error}
             </p>
           )}
@@ -93,12 +95,13 @@ const Login = () => {
           <Button data-testid="login-submit" type="submit" disabled={busy} className="mt-6 w-full">
             {busy ? "Signing in..." : "Sign In"}
           </Button>
-          <Link
-            to="/"
-            className="mt-6 block text-center text-xs text-muted-foreground transition-colors duration-200 hover:text-primary"
-          >
-            ← Back to website
-          </Link>
+
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            New here?{" "}
+            <Link to="/signup" data-testid="go-signup" className="font-semibold text-primary hover:underline">
+              Create a workspace
+            </Link>
+          </p>
         </form>
       </div>
     </div>
