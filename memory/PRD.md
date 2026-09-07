@@ -38,6 +38,15 @@
 - **It. 8 (2026-06) — Multi-tenant SaaS pivot**: landing page removed (`/` → Login), 3-step signup onboarding (workspace → first company → owner account), `scoping.py` `ScopedDB` stamping/filtering `tenant_id` + `company_id` on every data collection (parties & counters are tenant-wide, everything else company-scoped), multiple companies per tenant with sidebar switcher (`X-Company-Id` header), plans (trial 1co/3users free · basic 2/5 ₹999 · pro 5/20 ₹2499) with 402 upgrade prompts, super-admin Platform Console at `/platform` (stats, MRR, plan/expiry edit, extend days, suspend/reactivate, delete tenant), suspension & expiry blocking with 402, superadmin↔tenant cross-access blocked (403)
 - Verified It. 8: backend 26/26 (`backend/tests/test_saas_multitenant.py`, run with `-n 0`) + frontend smoke (signup→dashboard, company switcher, plan cap, platform console). Obsolete `test_iteration7.py` removed (pre-SaaS creds no longer seeded)
 
+- **It. 9 (2026-06) — Price Lists, Category Custom Fields, Party Merge**: `price-lists` master (party+product+kind agreed rate) with `GET /api/price-lists/lookup` auto-filling rate/rate_basis on NEW purchase/sale entry; per-category `custom_fields` (`parse_custom_fields` → `{key,label,type}`, text/number types) that render dynamically on purchase/sale entry and save into the txn `custom` dict; manual Party Merge (`GET /api/parties/duplicates`, `POST /api/parties/merge`) with a UI to auto-detect duplicates + manually pick keep/source, moving all history. Verified: iteration_9.json 7/7 flows pass.
+- **It. 10 (2026-06) — Lot hidden on sale bill, Debit Notes, Searchable dropdowns**: sale invoice PDF no longer prints Lot No (kept on purchase voucher + still stored); `debit_notes` collection + CRUD posting a DEBIT to the party ledger (mirror of credit notes); `SearchableSelect` (cmdk + popover) combobox replaces all CrudPage form + filter selects for type-to-search. Verified: iteration_10.json 100%.
+- **It. 11–12 (2026-06) — Custom Roles + RBAC**: per-tenant `roles` collection with feature×operation permissions (`ALL_FEATURES`, ops view/create/edit/delete); `roles` CRUD (`GET /api/roles`, `GET /api/roles/features`, POST/PUT/DELETE, admin-only) + a permission-matrix builder page (`Roles.jsx`); staff users can be assigned `role="custom"` + `role_id`; **server-side deny-by-default enforcement** via `compute_perms`/`ensure_perm`/`require_perm` in `scoping.py` — `register_master`/`register_txn` and ledger/receipts/credit-notes/debit-notes/invoices/reports endpoints all gated; owner/admin = full, legacy operator = entry screens, custom = assigned perms; `/auth/me` returns `perms`+`is_admin`; frontend gates sidebar nav, CrudPage + Ledger action buttons, and shows Access Restricted on direct nav. Verified: iteration_11.json (backend 12/12, frontend ~95%) + iteration_12.json (Ledger gating fix 100%).
+
+## Personas (updated)
+- **Admin / Owner** — every screen, all accounts, settings, roles & staff management
+- **Operator** — legacy entry-screens-only role
+- **Custom role** — any tenant-defined role with feature×operation (view/create/edit/delete) permissions
+
 ## Backlog
 - P2: Split `server.py` (~1,200 lines) into a `routers/` package
 - P2: `/api/outstanding` via an aggregation pipeline instead of Python loops
@@ -46,9 +55,8 @@
 - P3: Lot trace groups blank lot numbers under "(no lot)"
 
 ## Next Tasks
-1. P0 Party price lists — party-wise agreed rates auto-filling purchase/sale entry
-2. P1 Per-category custom fields (e.g. cold-storage rent, grading)
-3. P1 Party merge tool — detect duplicates, merge ledgers without losing history
-4. P1 Quick entry mode — keyboard-only fast entry screen for busy season
-5. P2 Router split (`server.py` ~1,240 lines → `routers/platform.py`, `routers/cron.py`)
-6. P2 Plan downgrade guard; drop the unused login cookie; self-heal default categories
+1. P1 Quick entry mode — keyboard-only fast entry screen for busy season
+2. P2 Router split (`server.py` ~1,400 lines → `routers/platform.py`, `routers/cron.py`, `routers/accounts.py`)
+3. P2 Plan downgrade guard; drop the unused login cookie; self-heal default categories
+4. P2 Billing self-serve — let tenants upgrade their own plan in-app
+5. P3 Seed a couple of default custom roles (Accountant, Counter Staff) on new tenants

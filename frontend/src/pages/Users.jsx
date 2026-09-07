@@ -11,11 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const blank = { name: "", email: "", password: "", role: "operator" };
+const blank = { name: "", email: "", password: "", role: "operator", role_id: "" };
 
 const Users = () => {
   const { user: me } = useAuth();
   const [rows, setRows] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -24,9 +25,11 @@ const Users = () => {
 
   const load = useCallback(() => {
     setLoading(true);
-    api
-      .get("/users")
-      .then(({ data }) => setRows(data))
+    Promise.all([api.get("/users"), api.get("/roles")])
+      .then(([u, r]) => {
+        setRows(u.data);
+        setRoles(r.data || []);
+      })
       .catch((e) => toast.error(errMsg(e)))
       .finally(() => setLoading(false));
   }, []);
@@ -63,7 +66,7 @@ const Users = () => {
     <div data-testid="users-page">
       <PageHeader
         title="Staff Logins"
-        subtitle="Admins get every screen. Operators can only use the entry screens — masters, purchases, sales, stock and lot traceability."
+        subtitle="Admins get every screen. Operators use the entry screens only. Assign a custom role to control access feature-by-feature."
         action={
           <Button
             className="gap-2"
@@ -89,17 +92,25 @@ const Users = () => {
           {
             key: "role",
             label: "Role",
-            render: (r) => (
-              <Badge
-                className={`rounded-full ${
-                  r.role === "admin"
-                    ? "bg-primary/10 text-primary hover:bg-primary/10"
-                    : "bg-accent/25 text-accent-foreground hover:bg-accent/25"
-                }`}
-              >
-                {r.role === "admin" ? "Admin" : "Operator"}
-              </Badge>
-            ),
+            render: (r) => {
+              const label =
+                r.role === "admin"
+                  ? "Admin"
+                  : r.role === "operator"
+                  ? "Operator"
+                  : roles.find((x) => x.id === r.role_id)?.name || "Custom Role";
+              return (
+                <Badge
+                  className={`rounded-full ${
+                    r.role === "admin"
+                      ? "bg-primary/10 text-primary hover:bg-primary/10"
+                      : "bg-accent/25 text-accent-foreground hover:bg-accent/25"
+                  }`}
+                >
+                  {label}
+                </Badge>
+              );
+            },
           },
           { key: "created_at", label: "Created", render: (r) => (r.created_at || "").slice(0, 10) },
         ]}
@@ -112,7 +123,7 @@ const Users = () => {
               data-testid={`users-edit-${row.id}`}
               onClick={() => {
                 setEditing(row);
-                setForm({ name: row.name || "", email: row.email, password: "", role: row.role });
+                setForm({ name: row.name || "", email: row.email, password: "", role: row.role, role_id: row.role_id || "" });
                 setOpen(true);
               }}
             >
@@ -160,13 +171,25 @@ const Users = () => {
             </div>
             <div>
               <Label className="text-xs">Role</Label>
-              <Select value={form.role} onValueChange={(v) => setForm((s) => ({ ...s, role: v }))}>
+              <Select
+                value={form.role === "custom" ? form.role_id : form.role}
+                onValueChange={(v) =>
+                  v === "admin" || v === "operator"
+                    ? setForm((s) => ({ ...s, role: v, role_id: "" }))
+                    : setForm((s) => ({ ...s, role: "custom", role_id: v }))
+                }
+              >
                 <SelectTrigger data-testid="users-field-role" className="mt-1">
-                  <SelectValue />
+                  <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent className="bg-white">
                   <SelectItem value="operator">Operator (entry screens only)</SelectItem>
                   <SelectItem value="admin">Admin (full access)</SelectItem>
+                  {roles.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name} (custom role)
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

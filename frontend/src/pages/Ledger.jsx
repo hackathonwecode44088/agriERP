@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Download, FileSpreadsheet, Mail, MessageCircle, Plus, Trash2 } from "lucide-react";
 import api, { errMsg, money } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { DataTable, PageHeader, StatCard } from "@/components/Shell";
 import { downloadLedgerPdf } from "@/lib/pdf";
 import { downloadExcel, mapRows } from "@/lib/excel";
@@ -21,6 +22,8 @@ const blank = {
 };
 
 const Ledger = () => {
+  const { perms, isAdmin } = useAuth();
+  const lp = isAdmin ? ["view", "create", "edit", "delete"] : perms?.ledger || [];
   const [parties, setParties] = useState([]);
   const [partyId, setPartyId] = useState("");
   const [data, setData] = useState(null);
@@ -166,9 +169,11 @@ const Ledger = () => {
             >
               <Download className="h-4 w-4" /> PDF
             </Button>
-            <Button disabled={!partyId} data-testid="ledger-add-btn" className="gap-2" onClick={() => setOpen(true)}>
-              <Plus className="h-4 w-4" /> Add Entry
-            </Button>
+            {lp.includes("create") && (
+              <Button disabled={!partyId} data-testid="ledger-add-btn" className="gap-2" onClick={() => setOpen(true)}>
+                <Plus className="h-4 w-4" /> Add Entry
+              </Button>
+            )}
           </div>
         }
       />
@@ -215,7 +220,7 @@ const Ledger = () => {
           { key: "balance", label: "Balance", align: "right", render: (r) => money(r.balance) },
         ]}
         actions={(row) =>
-          (row.ref_type || "manual") === "manual" ? (
+          lp.includes("delete") && (row.ref_type || "manual") === "manual" ? (
             <Button
               size="icon"
               variant="ghost"

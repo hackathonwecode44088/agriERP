@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only testing for 3 new features (Price Lists, Category Custom Fields, Party Merge). All 7 requested flows verified end-to-end via Playwright against the public preview URL. No frontend bugs found. Zero console errors during flows.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_flows": [
+    "Owner login (merge_test_1788760554@demo.com) reaches /admin/dashboard successfully.",
+    "Price Lists page (/admin/price-lists): existing seeded row renders (Ramesh Traders / Jyoti Potato / Sale / ₹550.00 / Per Bag / Active). Add modal opens with Party, Product, Rate Type (Sale/Purchase), Agreed Rate, Rate Basis, Valid From, Notes, Status fields. Edit/Delete actions present.",
+    "Sales auto-fill: new Sale + Ramesh Traders + Jyoti Potato -> Rate field auto-filled to '550' and toast 'Rate filled from price list' displayed. Custom fields section (Cold Storage Rent / Grading) rendered inside modal.",
+    "Categories page: 'Cold Store Potato' edit modal shows Custom Fields editor with 2 rows -> [Cold Storage Rent, Number] and [Grading, Text]; +Add Field repeater present; table shows custom-field badges.",
+    "Purchases custom fields save: created NEW purchase with category 'Cold Store Potato', filled purchases-custom-cold_storage_rent=120 and purchases-custom-grading='A grade'. Save returned 'Created successfully' toast and PUR-00002 row appeared in the list.",
+    "Party Merge (/admin/party-merge): duplicate-groups section shown with 2 Ramesh Traders parties. Clicked merge, confirmation dialog opened, 'Merge & keep one' succeeded with toast 'Parties merged. All history moved to the kept party.' After reload the group vanished and 'no-duplicates' state appeared. Manual merge card with source/target selects + Merge button is also present.",
+    "RBAC: created a fresh Operator staff account (op<ts>@demo.com). After operator login, sidebar hides 'Merge Parties' but shows 'Price Lists'. Direct navigation to /admin/party-merge shows 'Access restricted' guard."
+  ],
+  "critical_code_review_comments": [
+    "Minor: /admin/users list shows the owner (whose sidebar badge is ADMIN) with a role of 'Operator' in the table. This is inconsistent labeling; user rows may be showing membership role separate from the owner flag. Cosmetic, not blocking.",
+    "Minor: In Purchases list, PUR-00002 created without a date shows 'DATE: -' since Date field defaulted empty in the Add modal. Consider defaulting today's date."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (7/7 flows)"},
+  "test_credentials": "Owner: merge_test_1788760554@demo.com / Owner@123. Operator: freshly created each run via /admin/users -> Add Staff.",
+  "seed_data_creation": "Created 1 new purchase (PUR-00002) with custom fields and 1 new operator staff account for RBAC test. Consumed the duplicate Ramesh Traders group via merge.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The seeded duplicate party group has been merged, and a purchase (PUR-00002) with custom fields exists. Re-runs won't find duplicates unless main agent re-seeds; the 'no-duplicates' path is the expected state now.",
+  "rca of the issue": "N/A - no defects found"
+}

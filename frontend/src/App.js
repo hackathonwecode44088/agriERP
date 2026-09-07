@@ -11,6 +11,8 @@ import Dashboard from "@/pages/Dashboard";
 import Parties from "@/pages/Parties";
 import Categories from "@/pages/Categories";
 import Products from "@/pages/Products";
+import PriceLists from "@/pages/PriceLists";
+import PartyMerge from "@/pages/PartyMerge";
 import Godowns from "@/pages/Godowns";
 import TxnPage from "@/pages/TxnPage";
 import Stock from "@/pages/Stock";
@@ -18,6 +20,8 @@ import LotTrace from "@/pages/LotTrace";
 import Ledger from "@/pages/Ledger";
 import Receipts from "@/pages/Receipts";
 import CreditNotes from "@/pages/CreditNotes";
+import DebitNotes from "@/pages/DebitNotes";
+import Roles from "@/pages/Roles";
 import Invoices from "@/pages/Invoices";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
@@ -41,6 +45,8 @@ function App() {
               <Route path="companies" element={<Companies />} />
               <Route path="categories" element={<Categories />} />
               <Route path="products" element={<Products />} />
+              <Route path="price-lists" element={<PriceLists />} />
+              <Route path="party-merge" element={<PartyMerge />} />
               <Route path="godowns" element={<Godowns />} />
               <Route path="purchases" element={<TxnPage kind="purchases" />} />
               <Route path="sales" element={<TxnPage kind="sales" />} />
@@ -49,6 +55,8 @@ function App() {
               <Route path="ledger" element={<Ledger />} />
               <Route path="receipts" element={<Receipts />} />
               <Route path="credit-notes" element={<CreditNotes />} />
+              <Route path="debit-notes" element={<DebitNotes />} />
+              <Route path="roles" element={<Roles />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />

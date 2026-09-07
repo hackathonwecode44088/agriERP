@@ -8,10 +8,66 @@ from core import db, get_current_user, oid, now_iso
 # Collections that hold tenant data (scoped). Others (users, tenants, settings) are handled explicitly.
 SCOPED = {
     "parties", "product_categories", "products", "godowns", "price_lists",
-    "purchases", "sales", "ledger", "receipts", "credit_notes", "counters",
+    "purchases", "sales", "ledger", "receipts", "credit_notes", "debit_notes", "counters", "roles",
 }
 # Tenant-wide (shared across the tenant's companies)
-TENANT_ONLY = {"parties", "counters"}
+TENANT_ONLY = {"parties", "counters", "roles"}
+
+# Assignable features (feature key -> operations that make sense for it). Used by the role builder
+# and enforced server-side. users/settings/companies/party-merge/roles stay owner/admin only.
+ALL_FEATURES = {
+    "dashboard": ["view"],
+    "parties": ["view", "create", "edit", "delete"],
+    "product-categories": ["view", "create", "edit", "delete"],
+    "products": ["view", "create", "edit", "delete"],
+    "price-lists": ["view", "create", "edit", "delete"],
+    "godowns": ["view", "create", "edit", "delete"],
+    "purchases": ["view", "create", "edit", "delete"],
+    "sales": ["view", "create", "edit", "delete"],
+    "stock": ["view"],
+    "lots": ["view"],
+    "ledger": ["view", "create", "edit", "delete"],
+    "receipts": ["view", "create", "edit", "delete"],
+    "credit-notes": ["view", "create", "edit", "delete"],
+    "debit-notes": ["view", "create", "edit", "delete"],
+    "invoices": ["view"],
+    "reports": ["view"],
+}
+# Legacy "operator" role — entry screens only (matches the historical operator access).
+OPERATOR_PERMS = {
+    "dashboard": ["view"],
+    "parties": ["view", "create", "edit", "delete"],
+    "product-categories": ["view", "create", "edit", "delete"],
+    "products": ["view", "create", "edit", "delete"],
+    "godowns": ["view", "create", "edit", "delete"],
+    "price-lists": ["view", "create", "edit", "delete"],
+    "purchases": ["view", "create", "edit", "delete"],
+    "sales": ["view", "create", "edit", "delete"],
+    "stock": ["view"],
+    "lots": ["view"],
+}
+
+
+async def compute_perms(user: dict) -> dict:
+    """Server-derived effective permissions for a tenant user. Never trust client-sent perms."""
+    role = user.get("role")
+    if role in ("owner", "admin"):
+        return {f: list(ops) for f, ops in ALL_FEATURES.items()}
+    if role == "custom" and user.get("role_id"):
+        rdoc = await db.roles.find_one({"_id": oid(user["role_id"]), "tenant_id": user.get("tenant_id")})
+        raw = (rdoc or {}).get("permissions", {}) or {}
+        return {f: [o for o in (raw.get(f) or []) if o in ALL_FEATURES.get(f, [])]
+                for f in ALL_FEATURES if raw.get(f)}
+    return {f: list(ops) for f, ops in OPERATOR_PERMS.items()}
+
+
+def has_perm(scope: dict, feature: str, op: str) -> bool:
+    return op in (scope.get("perms", {}).get(feature) or [])
+
+
+def ensure_perm(scope: dict, feature: str, op: str) -> None:
+    if not has_perm(scope, feature, op):
+        raise HTTPException(status_code=403, detail="You don't have permission for this action")
 
 
 class ScopedCollection:
@@ -102,14 +158,24 @@ async def get_scope(request: Request, user: dict = Depends(get_current_user)) ->
     if not company:
         raise HTTPException(status_code=400, detail="Create a company first")
 
+    perms = await compute_perms(user)
     return {
         "user": user,
         "tenant": {"id": tenant_id, "name": tenant.get("name"), "plan": tenant.get("plan"),
                    "status": tenant.get("status")},
         "company_id": str(company["_id"]),
         "company": {"id": str(company["_id"]), "name": company.get("name")},
+        "perms": perms,
+        "is_admin": user.get("role") in ("owner", "admin"),
         "db": ScopedDB(tenant_id, str(company["_id"])),
     }
+
+
+def require_perm(feature: str, op: str):
+    async def dep(scope: dict = Depends(get_scope)) -> dict:
+        ensure_perm(scope, feature, op)
+        return scope
+    return dep
 
 
 async def require_admin_scope(scope: dict = Depends(get_scope)) -> dict:

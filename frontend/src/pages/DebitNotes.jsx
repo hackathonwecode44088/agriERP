@@ -4,12 +4,12 @@ import { nameOf } from "@/components/Shell";
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
-const CreditNotes = () => (
+const DebitNotes = () => (
   <CrudPage
-    testid="credit-notes"
-    title="Credit Note"
-    subtitle="Deductions and adjustments against any party's invoice. Posts a credit to their ledger."
-    endpoint="credit-notes"
+    testid="debit-notes"
+    title="Debit Note"
+    subtitle="Extra charges or adjustments that increase what a party owes you. Posts a debit to their ledger."
+    endpoint="debit-notes"
     soft={false}
     searchKeys={["note_no", "against_invoice", "reason"]}
     fields={[
@@ -36,4 +36,4 @@ const CreditNotes = () => (
   />
 );
 
-export default CreditNotes;
+export default DebitNotes;

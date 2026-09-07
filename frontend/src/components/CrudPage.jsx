@@ -22,6 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader, DataTable } from "@/components/Shell";
+import { SearchableSelect } from "@/components/SearchableSelect";
+import { useAuth } from "@/context/AuthContext";
 
 const emptyFor = (fields, defaults) => {
   const o = { ...defaults };
@@ -29,6 +31,70 @@ const emptyFor = (fields, defaults) => {
     if (o[f.name] === undefined) o[f.name] = f.default ?? "";
   });
   return o;
+};
+
+const CUSTOM_TYPES = [
+  { value: "text", label: "Text" },
+  { value: "number", label: "Number" },
+];
+
+const CustomFieldsEditor = ({ value, onChange, testid }) => {
+  const rows = Array.isArray(value) ? value : [];
+  const update = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const add = () => onChange([...rows, { label: "", type: "text" }]);
+  const remove = (i) => onChange(rows.filter((_, idx) => idx !== i));
+  return (
+    <div className="mt-1 space-y-2" data-testid={`${testid}-customfields`}>
+      {rows.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No extra fields yet. Add fields like "Cold Storage Rent" or "Grading".
+        </p>
+      )}
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <Input
+            data-testid={`${testid}-cf-label-${i}`}
+            className="flex-1"
+            placeholder="Field name"
+            value={r.label || ""}
+            onChange={(e) => update(i, { label: e.target.value })}
+          />
+          <Select value={r.type || "text"} onValueChange={(v) => update(i, { type: v })}>
+            <SelectTrigger data-testid={`${testid}-cf-type-${i}`} className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-white">
+              {CUSTOM_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-9 w-9 shrink-0 text-destructive"
+            data-testid={`${testid}-cf-remove-${i}`}
+            onClick={() => remove(i)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="gap-1"
+        data-testid={`${testid}-cf-add`}
+        onClick={add}
+      >
+        <Plus className="h-3.5 w-3.5" /> Add Field
+      </Button>
+    </div>
+  );
 };
 
 export const CrudPage = ({
@@ -44,10 +110,14 @@ export const CrudPage = ({
   computeAmount = false,
   gst = false,
   rateAlert = null,
+  priceLookup = null,
+  customFrom = null,
+  customBy = "category_id",
   searchKeys = ["name"],
   onChanged,
   filters = [],
 }) => {
+  const { perms, isAdmin } = useAuth();
   const [filterVals, setFilterVals] = useState(
     Object.fromEntries(filters.map((f) => [f.name, "all"]))
   );
@@ -101,7 +171,7 @@ export const CrudPage = ({
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...emptyFor(fields, defaults), ...activeFilters });
+    setForm({ ...emptyFor(fields, defaults), custom: {}, ...activeFilters });
     setOpen(true);
   };
 
@@ -110,8 +180,10 @@ export const CrudPage = ({
     const f = emptyFor(fields, defaults);
     fields.forEach((fl) => {
       if (row[fl.name] === undefined || row[fl.name] === null) return;
-      f[fl.name] = fl.type === "multiselect" ? row[fl.name] : String(row[fl.name]);
+      f[fl.name] =
+        fl.type === "multiselect" || fl.type === "customfields" ? row[fl.name] : String(row[fl.name]);
     });
+    f.custom = row.custom || {};
     setForm(f);
     setOpen(true);
   };
@@ -185,6 +257,27 @@ export const CrudPage = ({
       .catch(() => setStats(null));
   }, [rateAlert, open, form.product_id]); // eslint-disable-line
 
+  useEffect(() => {
+    if (!priceLookup || !open || editing || !form.party_id || !form.product_id) return;
+    api
+      .get("/price-lists/lookup", {
+        params: { party_id: form.party_id, product_id: form.product_id, kind: priceLookup.kind },
+      })
+      .then(({ data }) => {
+        if (data.found) {
+          setForm((s) => ({ ...s, rate: String(data.rate), rate_basis: data.rate_basis || s.rate_basis }));
+          toast.success("Rate filled from price list");
+        }
+      })
+      .catch(() => {});
+  }, [priceLookup, open, editing, form.party_id, form.product_id]); // eslint-disable-line
+
+  const customFields = useMemo(() => {
+    if (!customFrom) return [];
+    const item = (lookups[customFrom] || []).find((x) => x.id === form[customBy]);
+    return Array.isArray(item?.custom_fields) ? item.custom_fields : [];
+  }, [customFrom, customBy, lookups, form[customBy]]); // eslint-disable-line
+
   const rateWarning = useMemo(() => {
     const rate = Number(form.rate || 0);
     if (!stats || !rate || !stats.avg_rate) return null;
@@ -215,15 +308,22 @@ export const CrudPage = ({
     );
   };
 
+  const featurePerms = isAdmin ? ["view", "create", "edit", "delete"] : (perms?.[endpoint] || []);
+  const canCreate = featurePerms.includes("create");
+  const canEdit = featurePerms.includes("edit");
+  const canDelete = featurePerms.includes("delete");
+
   return (
     <div data-testid={`${testid}-page`}>
       <PageHeader
         title={title}
         subtitle={subtitle}
         action={
-          <Button data-testid={`${testid}-add-btn`} onClick={openCreate} className="gap-2">
-            <Plus className="h-4 w-4" /> Add New
-          </Button>
+          canCreate ? (
+            <Button data-testid={`${testid}-add-btn`} onClick={openCreate} className="gap-2">
+              <Plus className="h-4 w-4" /> Add New
+            </Button>
+          ) : null
         }
       />
 
@@ -231,22 +331,13 @@ export const CrudPage = ({
         {filters.map((f) => (
           <div key={f.name} className="w-48">
             <Label className="text-xs">{f.label}</Label>
-            <Select
+            <SearchableSelect
+              testid={`${testid}-filter-${f.name}`}
+              className="mt-1 bg-white"
               value={filterVals[f.name]}
               onValueChange={(v) => setFilterVals((s) => ({ ...s, [f.name]: v }))}
-            >
-              <SelectTrigger data-testid={`${testid}-filter-${f.name}`} className="mt-1 bg-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-white">
-                <SelectItem value="all">{f.allLabel || `All ${f.label}`}</SelectItem>
-                {optionsFor(f, {}).map((o) => (
-                  <SelectItem key={o.value} value={String(o.value)}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={[{ value: "all", label: f.allLabel || `All ${f.label}` }, ...optionsFor(f, {})]}
+            />
           </div>
         ))}
         <div className="relative w-full max-w-xs">
@@ -268,39 +359,47 @@ export const CrudPage = ({
         columns={columns}
         rows={filtered}
         lookups={lookups}
-        actions={(row) => (
-          <div className="flex justify-end gap-1">
-            <Button
-              data-testid={`${testid}-edit-${row.id}`}
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8"
-              onClick={() => openEdit(row)}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            {soft && (
-              <Button
-                data-testid={`${testid}-toggle-${row.id}`}
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8"
-                onClick={() => toggle(row)}
-              >
-                <Power className={`h-4 w-4 ${row.status === "closed" ? "text-secondary" : ""}`} />
-              </Button>
-            )}
-            <Button
-              data-testid={`${testid}-delete-${row.id}`}
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 text-destructive"
-              onClick={() => setConfirmRow(row)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+        actions={
+          canEdit || canDelete
+            ? (row) => (
+                <div className="flex justify-end gap-1">
+                  {canEdit && (
+                    <Button
+                      data-testid={`${testid}-edit-${row.id}`}
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      onClick={() => openEdit(row)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {soft && canEdit && (
+                    <Button
+                      data-testid={`${testid}-toggle-${row.id}`}
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      onClick={() => toggle(row)}
+                    >
+                      <Power className={`h-4 w-4 ${row.status === "closed" ? "text-secondary" : ""}`} />
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <Button
+                      data-testid={`${testid}-delete-${row.id}`}
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-destructive"
+                      onClick={() => setConfirmRow(row)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              )
+            : undefined
+        }
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -315,21 +414,15 @@ export const CrudPage = ({
               <div key={f.name} className={f.full ? "sm:col-span-2" : ""}>
                 <Label className="text-xs font-medium">{f.label}</Label>
                 {f.type === "select" ? (
-                  <Select
-                    value={form[f.name] ? String(form[f.name]) : ""}
-                    onValueChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))}
-                  >
-                    <SelectTrigger data-testid={`${testid}-field-${f.name}`} className="mt-1">
-                      <SelectValue placeholder={`Select ${f.label}`} />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white">
-                      {optionsFor(f).map((o) => (
-                        <SelectItem key={o.value} value={String(o.value)}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      testid={`${testid}-field-${f.name}`}
+                      value={form[f.name] ? String(form[f.name]) : ""}
+                      onValueChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))}
+                      options={optionsFor(f)}
+                      placeholder={`Select ${f.label}`}
+                    />
+                  </div>
                 ) : f.type === "multiselect" ? (
                   <div className="mt-1 flex flex-wrap gap-2" data-testid={`${testid}-field-${f.name}`}>
                     {optionsFor(f).map((o) => {
@@ -359,6 +452,12 @@ export const CrudPage = ({
                       );
                     })}
                   </div>
+                ) : f.type === "customfields" ? (
+                  <CustomFieldsEditor
+                    testid={testid}
+                    value={form[f.name]}
+                    onChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))}
+                  />
                 ) : f.type === "textarea" ? (
                   <Textarea
                     data-testid={`${testid}-field-${f.name}`}
@@ -377,6 +476,29 @@ export const CrudPage = ({
                 )}
               </div>
             ))}
+            {customFields.length > 0 && (
+              <div className="sm:col-span-2 border-t border-border pt-3" data-testid={`${testid}-custom-section`}>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Category Details
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {customFields.map((cf) => (
+                    <div key={cf.key}>
+                      <Label className="text-xs font-medium">{cf.label}</Label>
+                      <Input
+                        data-testid={`${testid}-custom-${cf.key}`}
+                        className="mt-1"
+                        type={cf.type === "number" ? "number" : "text"}
+                        value={form.custom?.[cf.key] ?? ""}
+                        onChange={(e) =>
+                          setForm((s) => ({ ...s, custom: { ...(s.custom || {}), [cf.key]: e.target.value } }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {rateWarning && (
               <div
                 data-testid={`${testid}-rate-alert`}

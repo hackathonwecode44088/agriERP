@@ -6,6 +6,7 @@ import {
   Building2,
   FileText,
   Gauge,
+  GitMerge,
   Layers,
   LogOut,
   Menu,
@@ -13,7 +14,9 @@ import {
   ReceiptText,
   Route as RouteIcon,
   Settings,
+  ShieldCheck,
   Sprout,
+  Tag,
   Truck,
   Users,
   Wallet,
@@ -27,31 +30,33 @@ const NAV = [
   {
     group: "Masters",
     items: [
-      { to: "/admin/parties", label: "Parties", icon: Users },
-      { to: "/admin/companies", label: "Companies", icon: Layers },
-      { to: "/admin/categories", label: "Product Categories", icon: Layers },
-      { to: "/admin/products", label: "Products", icon: Package },
-      { to: "/admin/godowns", label: "Godown / Cold Storage", icon: Warehouse },
+      { to: "/admin/parties", label: "Parties", icon: Users, feature: "parties" },
+      { to: "/admin/companies", label: "Companies", icon: Layers, adminOnly: true },
+      { to: "/admin/categories", label: "Product Categories", icon: Layers, feature: "product-categories" },
+      { to: "/admin/products", label: "Products", icon: Package, feature: "products" },
+      { to: "/admin/price-lists", label: "Price Lists", icon: Tag, feature: "price-lists" },
+      { to: "/admin/party-merge", label: "Merge Parties", icon: GitMerge, adminOnly: true },
+      { to: "/admin/godowns", label: "Godown / Cold Storage", icon: Warehouse, feature: "godowns" },
     ],
   },
   {
     group: "Trading",
     items: [
-      { to: "/admin/purchases", label: "Purchases", icon: Truck },
-      { to: "/admin/sales", label: "Sales", icon: ReceiptText },
-      { to: "/admin/stock", label: "Stock", icon: Sprout },
-      { to: "/admin/lots", label: "Lot Traceability", icon: RouteIcon },
+      { to: "/admin/purchases", label: "Purchases", icon: Truck, feature: "purchases" },
+      { to: "/admin/sales", label: "Sales", icon: ReceiptText, feature: "sales" },
+      { to: "/admin/stock", label: "Stock", icon: Sprout, feature: "stock" },
+      { to: "/admin/lots", label: "Lot Traceability", icon: RouteIcon, feature: "lots" },
     ],
   },
   {
     group: "Accounts",
-    adminOnly: true,
     items: [
-      { to: "/admin/ledger", label: "Party Ledger", icon: FileText },
-      { to: "/admin/receipts", label: "Payments & Receipts", icon: Wallet },
-      { to: "/admin/credit-notes", label: "Credit Notes", icon: ReceiptText },
-      { to: "/admin/invoices", label: "Invoices", icon: FileText },
-      { to: "/admin/reports", label: "Reports", icon: BarChart3 },
+      { to: "/admin/ledger", label: "Party Ledger", icon: FileText, feature: "ledger" },
+      { to: "/admin/receipts", label: "Payments & Receipts", icon: Wallet, feature: "receipts" },
+      { to: "/admin/credit-notes", label: "Credit Notes", icon: ReceiptText, feature: "credit-notes" },
+      { to: "/admin/debit-notes", label: "Debit Notes", icon: ReceiptText, feature: "debit-notes" },
+      { to: "/admin/invoices", label: "Invoices", icon: FileText, feature: "invoices" },
+      { to: "/admin/reports", label: "Reports", icon: BarChart3, feature: "reports" },
     ],
   },
   {
@@ -60,24 +65,14 @@ const NAV = [
     items: [
       { to: "/admin/settings", label: "Company Profile", icon: Settings },
       { to: "/admin/users", label: "Staff Logins", icon: Users },
+      { to: "/admin/roles", label: "Roles & Permissions", icon: ShieldCheck },
       { to: "/admin/schedule-history", label: "Schedule History", icon: CalendarClock },
     ],
   },
 ];
 
-const ADMIN_PATHS = [
-  "/admin/ledger",
-  "/admin/receipts",
-  "/admin/credit-notes",
-  "/admin/invoices",
-  "/admin/reports",
-  "/admin/settings",
-  "/admin/users",
-  "/admin/schedule-history",
-];
-
 const AdminLayout = () => {
-  const { user, logout, tenant, companies, companyId, switchCompany } = useAuth();
+  const { user, logout, tenant, companies, companyId, switchCompany, perms, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -90,9 +85,17 @@ const AdminLayout = () => {
     );
   if (user === false) return <Navigate to="/login" replace />;
 
-  const isAdmin = user?.role === "admin" || user?.role === "owner";
-  const nav = NAV.filter((g) => isAdmin || !g.adminOnly);
-  const blocked = !isAdmin && ADMIN_PATHS.some((p) => location.pathname.startsWith(p));
+  const canSee = (it, groupAdmin) =>
+    isAdmin ||
+    (!it.adminOnly && !groupAdmin && (!it.feature || (perms?.[it.feature] || []).includes("view")));
+  const nav = NAV.map((g) => ({ ...g, items: g.items.filter((it) => canSee(it, g.adminOnly)) })).filter(
+    (g) => g.items.length > 0
+  );
+  const currentItem = NAV.flatMap((g) => g.items.map((it) => ({ ...it, groupAdmin: g.adminOnly }))).find(
+    (it) => location.pathname.startsWith(it.to)
+  );
+  const blocked = currentItem ? !canSee(currentItem, currentItem.groupAdmin) : false;
+  const roleLabel = isAdmin ? "Admin" : user?.role === "custom" ? "Custom Role" : "Operator";
 
   const sidebar = (
     <nav className="flex h-full flex-col bg-[#14261D] text-white/90">
@@ -150,7 +153,7 @@ const AdminLayout = () => {
       </div>
       <div className="border-t border-white/10 px-4 py-3">
         <p className="truncate text-xs text-white/50">{user?.email}</p>
-        <p className="text-[10px] uppercase tracking-widest text-accent">{isAdmin ? "Admin" : "Operator"}</p>
+        <p className="text-[10px] uppercase tracking-widest text-accent">{roleLabel}</p>
         <button
           data-testid="logout-btn"
           onClick={async () => {
@@ -188,8 +191,7 @@ const AdminLayout = () => {
             <div data-testid="access-restricted" className="border border-border bg-white p-12 text-center">
               <h1 className="font-head text-2xl font-extrabold">Access restricted</h1>
               <p className="mt-3 text-sm text-muted-foreground">
-                Accounts, invoices, reports and settings are available to admin users only. Ask your administrator
-                if you need access.
+                You don't have permission to view this screen. Ask your administrator if you need access.
               </p>
               <Link
                 to="/admin/dashboard"

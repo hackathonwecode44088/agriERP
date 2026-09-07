@@ -34,7 +34,11 @@ export const downloadInvoicePdf = ({ doc: record, company, partyName, productNam
   pdf.text(partyName || "-", 14, 50);
   pdf.text(`Category: ${record.category || "-"}`, 14, 56);
   pdf.text(`Godown: ${godownName || "-"}`, 120, 50);
-  pdf.text(`Lot No: ${record.lot_no || "-"}   Vehicle: ${record.vehicle_no || "-"}`, 120, 56);
+  if (!isSale) {
+    pdf.text(`Lot No: ${record.lot_no || "-"}   Vehicle: ${record.vehicle_no || "-"}`, 120, 56);
+  } else if (record.vehicle_no) {
+    pdf.text(`Vehicle: ${record.vehicle_no}`, 120, 56);
+  }
 
   line(pdf, 62);
 

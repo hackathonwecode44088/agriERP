@@ -1,0 +1,29 @@
+{
+  "summary": "Tested Phase 2 Custom Roles + RBAC. Backend: 12/12 pytest cases pass — Accountant /auth/me perms exactly {dashboard:[view], ledger:[view], receipts:[view,create], invoices:[view]}; GET /ledger, /receipts = 200 and GET /sales, /parties, /users, POST /sales all return 403; owner has full access; /api/roles CRUD (create, list, edit, delete) works; delete of a role assigned to a staff member is properly blocked (>=400); Accountant is denied /api/roles. Frontend: Accountant sidebar correctly limited to Dashboard/Party Ledger/Payments & Receipts/Invoices; direct nav to /admin/sales and /admin/users both render the access-restricted screen; Receipts page shows the 'Add New' button (has create perm); Owner sees all 23 nav items; Roles page create-role flow works, including auto-tick of 'view' when ticking a non-view op (sales-create -> sales-view auto-checked, confirmed data-state=checked); new custom role appears in the Users role dropdown with 'Operator', 'Admin', 'Accountant', and the new TEST_QA_* role visible.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Ledger page (/admin/ledger)", "issue": "'Add Entry' button is visible to a custom-role user who only has ledger:view (Accountant). Spec requires 'on any screen where they only have view the Add/Edit/Delete buttons are hidden'. Backend correctly returns 403 if clicked, but the button should be hidden. Ledger.jsx renders the add button unconditionally (no useAuth/perms gating like CrudPage has).", "selector": "[data-testid=\"ledger-add-btn\"]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Role builder + Users add dialog", "issues": ["Console warning: Missing `Description` or `aria-describedby` on DialogContent (a11y warning, non-blocking)"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_rbac_roles.py", "/app/test_reports/pytest/rbac_results.xml"],
+  "action_items": [
+    "Gate Ledger.jsx 'Add Entry' button (and its per-row delete trash icon if present) on perms.ledger.includes('create'/'delete') using useAuth(), same pattern as CrudPage. Audit other non-CrudPage screens (Invoices, Reports, Credit/Debit Notes special actions) for the same missing UI gating; backend enforcement is already correct."
+  ],
+  "critical_code_review_comments": [
+    "Roles.jsx and Users.jsx look clean; permission matrix builder correctly auto-adds 'view' when a non-view op is ticked and clears the row when 'view' is untoggled.",
+    "Backend compute_perms filters custom-role permissions against ALL_FEATURES whitelist — good deny-by-default posture.",
+    "Ledger.jsx does not import useAuth and unconditionally shows the 'Add Entry' button — inconsistent with the perms-gated pattern in CrudPage.jsx."
+  ],
+  "updated_files": ["/app/backend/tests/test_rbac_roles.py"],
+  "success_rate": {"backend": "100%", "frontend": "~95% (1 UI gating miss on Ledger add button)"},
+  "test_credentials": "Owner: merge_test_1788760554@demo.com / Owner@123; Accountant: acc1@demo.com / Acc@123",
+  "seed_data_creation": "Created a custom role 'TEST_QA_<ts>' via UI (not deleted) and via backend test (deleted). Non-blocking clutter.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend RBAC 100% green (test_rbac_roles.py). Only remaining Phase-2 issue is Ledger.jsx (and possibly other non-CrudPage screens) not hiding create/delete buttons for view-only custom roles. Backend already returns 403 correctly. After fix, re-verify by logging in as acc1@demo.com and confirming no Add Entry button on /admin/ledger."
+}

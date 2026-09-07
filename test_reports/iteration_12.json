@@ -1,0 +1,22 @@
+{
+  "summary": "Focused retest of iteration_11 action item: Ledger.jsx UI gating for create/delete permissions. All three checks passed. Accountant (view-only) sees NO 'Add Entry' button and NO delete icons; view actions (WhatsApp/Email/Excel/PDF) remain visible. Owner sees 'Add Entry' button (enabled) and can select party. Sidebar RBAC still correct for Accountant (Dashboard, Party Ledger, Payments & Receipts, Invoices) and Receipts 'Add New' is visible for Accountant (has receipts create).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Ledger.jsx correctly uses useAuth: const lp = isAdmin ? ['view','create','edit','delete'] : perms?.ledger || []; and gates ledger-add-btn on lp.includes('create'); delete icon gated on lp.includes('delete') && (row.ref_type||'manual')==='manual'. Pattern matches CrudPage.jsx."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100%"},
+  "test_credentials": "Accountant: acc1@demo.com / Acc@123 (custom role, ledger VIEW only). Owner: merge_test_1788760554@demo.com / Owner@123.",
+  "seed_data_creation": "None. Used existing seed accounts/party from previous iterations.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 Custom Roles + RBAC is fully passing (both backend enforcement per iteration_11 and UI gating per iteration_12). Ledger.jsx is now the reference for non-CrudPage screens on how to gate action buttons using useAuth().perms. If new non-CrudPage screens are added in future phases, apply the same pattern.",
+  "rca of the issue": "N/A — no bug found in this retest. Prior gap: Ledger.jsx did not gate 'Add Entry' or per-row delete based on ledger permissions; view-only users saw and could click Add Entry (backend correctly returned 403). Fix (verified): imported useAuth, computed lp, gated the Add button on lp.includes('create') and the delete cell on lp.includes('delete')."
+}

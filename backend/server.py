@@ -17,7 +17,10 @@ from core import (
     create_access_token, db, get_current_user, hash_password, now_iso, oid, ser, verify_password,
 )
 from mailer import reminder_html, send_email, statement_html
-from scoping import ScopedDB, get_scope, require_admin_scope, require_superadmin
+from scoping import (
+    ALL_FEATURES, ScopedDB, compute_perms, ensure_perm, get_scope,
+    require_admin_scope, require_perm, require_superadmin,
+)
 
 app = FastAPI(title="Potato Management ERP")
 api = APIRouter(prefix="/api")
@@ -51,15 +54,18 @@ def as_list(v) -> list:
 
 
 def parse_custom_fields(value) -> list:
-    items = ([str(v.get("label") if isinstance(v, dict) else v) for v in value]
-             if isinstance(value, list) else str(value or "").split(","))
+    raw = value if isinstance(value, list) else str(value or "").split(",")
     out, seen = [], set()
-    for label in items:
-        label = label.strip()
+    for item in raw:
+        if isinstance(item, dict):
+            label = str(item.get("label") or item.get("key") or "").strip()
+            ftype = item.get("type") if item.get("type") in ("text", "number") else "text"
+        else:
+            label, ftype = str(item).strip(), "text"
         key = "".join(ch if ch.isalnum() else "_" for ch in label.lower()).strip("_")
         if label and key and key not in seen:
             seen.add(key)
-            out.append({"key": key, "label": label})
+            out.append({"key": key, "label": label, "type": ftype})
     return out
 
 
@@ -141,6 +147,8 @@ async def me(user: dict = Depends(get_current_user)):
         out["tenant"] = {**ser(tenant), "plan_label": PLANS.get(tenant.get("plan"), {}).get("label", "—")}
         out["companies"] = [ser(c) for c in
                             await db.companies.find({"tenant_id": user["tenant_id"]}).sort("name", 1).to_list(100)]
+        out["perms"] = await compute_perms(user)
+        out["is_admin"] = user.get("role") in ("owner", "admin")
     return out
 
 
@@ -206,7 +214,7 @@ async def delete_company(company_id: str, scope: dict = Depends(require_admin_sc
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Company not found")
     for coll in ("products", "product_categories", "purchases", "sales", "ledger",
-                 "receipts", "credit_notes", "godowns", "price_lists", "counters"):
+                 "receipts", "credit_notes", "debit_notes", "godowns", "price_lists", "counters"):
         await db[coll].delete_many({"tenant_id": tenant_id, "company_id": company_id})
     return {"ok": True}
 
@@ -254,6 +262,7 @@ def register_master(name: str, allowed: list):
                          category_id: Optional[str] = None, party_id: Optional[str] = None,
                          product_id: Optional[str] = None, kind: Optional[str] = None,
                          scope: dict = Depends(get_scope)):
+        ensure_perm(scope, name, "view")
         q = {}
         for key, val in (("status", status), ("roles", role), ("category_id", category_id),
                          ("party_id", party_id), ("product_id", product_id), ("kind", kind)):
@@ -263,6 +272,7 @@ def register_master(name: str, allowed: list):
         return [ser(d) for d in await scope["db"][coll].find(q).sort(sort_key, 1).to_list(5000)]
 
     async def create_item(payload: dict = Body(...), scope: dict = Depends(get_scope)):
+        ensure_perm(scope, name, "create")
         doc = normalise_master(name, {k: v for k, v in payload.items() if k in allowed}, True)
         doc.setdefault("status", "active")
         doc["created_at"] = now_iso()
@@ -270,6 +280,7 @@ def register_master(name: str, allowed: list):
         return ser(await scope["db"][coll].find_one({"_id": res.inserted_id}))
 
     async def update_item(item_id: str, payload: dict = Body(...), scope: dict = Depends(get_scope)):
+        ensure_perm(scope, name, "edit")
         doc = normalise_master(name, {k: v for k, v in payload.items() if k in allowed}, False)
         doc["updated_at"] = now_iso()
         res = await scope["db"][coll].update_one({"_id": oid(item_id)}, {"$set": doc})
@@ -279,6 +290,7 @@ def register_master(name: str, allowed: list):
 
     async def delete_item(item_id: str, scope: dict = Depends(get_scope)):
         sdb = scope["db"]
+        ensure_perm(scope, name, "delete")
         if name == "product-categories" and await sdb.products.count_documents({"category_id": item_id}) > 0:
             raise HTTPException(status_code=400, detail="Category has products. Move or delete them first.")
         res = await sdb[coll].delete_one({"_id": oid(item_id)})
@@ -470,6 +482,7 @@ def register_txn(kind: str):
 
     async def list_txn(category_id: Optional[str] = None, party_id: Optional[str] = None,
                        scope: dict = Depends(get_scope)):
+        ensure_perm(scope, kind, "view")
         q = {}
         if category_id:
             q["category_id"] = category_id
@@ -479,6 +492,7 @@ def register_txn(kind: str):
 
     async def create_txn(payload: dict = Body(...), scope: dict = Depends(get_scope)):
         sdb = scope["db"]
+        ensure_perm(scope, kind, "create")
         doc = clean_txn(payload)
         if kind == "sales":
             await assert_sale_stock(sdb, doc)
@@ -490,6 +504,7 @@ def register_txn(kind: str):
 
     async def update_txn(item_id: str, payload: dict = Body(...), scope: dict = Depends(get_scope)):
         sdb = scope["db"]
+        ensure_perm(scope, kind, "edit")
         existing = await sdb[kind].find_one({"_id": oid(item_id)})
         if not existing:
             raise HTTPException(status_code=404, detail="Record not found")
@@ -503,14 +518,16 @@ def register_txn(kind: str):
 
     async def delete_txn(item_id: str, scope: dict = Depends(get_scope)):
         sdb = scope["db"]
+        ensure_perm(scope, kind, "delete")
         if (await sdb[kind].delete_one({"_id": oid(item_id)})).deleted_count == 0:
             raise HTTPException(status_code=404, detail="Record not found")
         base = "purchase" if kind == "purchases" else "sale"
         await sdb.ledger.delete_many({"ref_type": {"$in": [base, f"{base}_payment"]}, "ref_id": item_id})
         return {"ok": True}
 
-    async def add_payment(item_id: str, payload: dict = Body(...), scope: dict = Depends(require_admin_scope)):
+    async def add_payment(item_id: str, payload: dict = Body(...), scope: dict = Depends(get_scope)):
         sdb = scope["db"]
+        ensure_perm(scope, kind, "edit")
         txn = await sdb[kind].find_one({"_id": oid(item_id)})
         if not txn:
             raise HTTPException(status_code=404, detail="Invoice not found")
@@ -557,13 +574,13 @@ CN_FIELDS = ["date", "party_id", "against_invoice", "amount", "reason", "categor
 
 
 @api.get("/receipts")
-async def list_receipts(party_id: Optional[str] = None, scope: dict = Depends(require_admin_scope)):
+async def list_receipts(party_id: Optional[str] = None, scope: dict = Depends(require_perm("receipts", "view"))):
     q = {"party_id": party_id} if party_id else {}
     return [ser(d) for d in await scope["db"].receipts.find(q).sort("date", -1).to_list(5000)]
 
 
 @api.post("/receipts")
-async def create_receipt(payload: dict = Body(...), scope: dict = Depends(require_admin_scope)):
+async def create_receipt(payload: dict = Body(...), scope: dict = Depends(require_perm("receipts", "create"))):
     sdb = scope["db"]
     doc = {k: v for k, v in payload.items() if k in RECEIPT_FIELDS}
     doc["amount"] = num(doc.get("amount"))
@@ -577,7 +594,7 @@ async def create_receipt(payload: dict = Body(...), scope: dict = Depends(requir
 
 
 @api.put("/receipts/{item_id}")
-async def update_receipt(item_id: str, payload: dict = Body(...), scope: dict = Depends(require_admin_scope)):
+async def update_receipt(item_id: str, payload: dict = Body(...), scope: dict = Depends(require_perm("receipts", "edit"))):
     sdb = scope["db"]
     existing = await sdb.receipts.find_one({"_id": oid(item_id)})
     if not existing:
@@ -590,7 +607,7 @@ async def update_receipt(item_id: str, payload: dict = Body(...), scope: dict = 
 
 
 @api.delete("/receipts/{item_id}")
-async def delete_receipt(item_id: str, scope: dict = Depends(require_admin_scope)):
+async def delete_receipt(item_id: str, scope: dict = Depends(require_perm("receipts", "delete"))):
     sdb = scope["db"]
     if (await sdb.receipts.delete_one({"_id": oid(item_id)})).deleted_count == 0:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -599,12 +616,12 @@ async def delete_receipt(item_id: str, scope: dict = Depends(require_admin_scope
 
 
 @api.get("/credit-notes")
-async def list_credit_notes(scope: dict = Depends(require_admin_scope)):
+async def list_credit_notes(scope: dict = Depends(require_perm("credit-notes", "view"))):
     return [ser(d) for d in await scope["db"].credit_notes.find({}).sort("date", -1).to_list(5000)]
 
 
 @api.post("/credit-notes")
-async def create_credit_note(payload: dict = Body(...), scope: dict = Depends(require_admin_scope)):
+async def create_credit_note(payload: dict = Body(...), scope: dict = Depends(require_perm("credit-notes", "create"))):
     sdb = scope["db"]
     doc = {k: v for k, v in payload.items() if k in CN_FIELDS}
     doc["amount"] = num(doc.get("amount"))
@@ -618,7 +635,7 @@ async def create_credit_note(payload: dict = Body(...), scope: dict = Depends(re
 
 
 @api.put("/credit-notes/{item_id}")
-async def update_credit_note(item_id: str, payload: dict = Body(...), scope: dict = Depends(require_admin_scope)):
+async def update_credit_note(item_id: str, payload: dict = Body(...), scope: dict = Depends(require_perm("credit-notes", "edit"))):
     sdb = scope["db"]
     existing = await sdb.credit_notes.find_one({"_id": oid(item_id)})
     if not existing:
@@ -632,7 +649,7 @@ async def update_credit_note(item_id: str, payload: dict = Body(...), scope: dic
 
 
 @api.delete("/credit-notes/{item_id}")
-async def delete_credit_note(item_id: str, scope: dict = Depends(require_admin_scope)):
+async def delete_credit_note(item_id: str, scope: dict = Depends(require_perm("credit-notes", "delete"))):
     sdb = scope["db"]
     if (await sdb.credit_notes.delete_one({"_id": oid(item_id)})).deleted_count == 0:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -640,13 +657,59 @@ async def delete_credit_note(item_id: str, scope: dict = Depends(require_admin_s
     return {"ok": True}
 
 
+# ---------------------------------------------------------------- debit notes
+DN_FIELDS = ["date", "party_id", "against_invoice", "amount", "reason", "category_id", "status"]
+
+
+@api.get("/debit-notes")
+async def list_debit_notes(scope: dict = Depends(require_perm("debit-notes", "view"))):
+    return [ser(d) for d in await scope["db"].debit_notes.find({}).sort("date", -1).to_list(5000)]
+
+
+@api.post("/debit-notes")
+async def create_debit_note(payload: dict = Body(...), scope: dict = Depends(require_perm("debit-notes", "create"))):
+    sdb = scope["db"]
+    doc = {k: v for k, v in payload.items() if k in DN_FIELDS}
+    doc["amount"] = num(doc.get("amount"))
+    doc["note_no"] = await next_number(sdb, "DN")
+    doc.setdefault("status", "active")
+    doc["created_at"] = now_iso()
+    res = await sdb.debit_notes.insert_one(doc)
+    await sync_ledger(sdb, "debit_note", str(res.inserted_id), doc.get("party_id"),
+                      doc.get("date", ""), f"Debit note {doc['note_no']}", doc["amount"], 0)
+    return ser(await sdb.debit_notes.find_one({"_id": res.inserted_id}))
+
+
+@api.put("/debit-notes/{item_id}")
+async def update_debit_note(item_id: str, payload: dict = Body(...), scope: dict = Depends(require_perm("debit-notes", "edit"))):
+    sdb = scope["db"]
+    existing = await sdb.debit_notes.find_one({"_id": oid(item_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Record not found")
+    doc = {k: v for k, v in payload.items() if k in DN_FIELDS}
+    doc["amount"] = num(doc.get("amount"))
+    await sdb.debit_notes.update_one({"_id": oid(item_id)}, {"$set": doc})
+    await sync_ledger(sdb, "debit_note", item_id, doc.get("party_id"), doc.get("date", ""),
+                      f"Debit note {existing.get('note_no', '')}", doc["amount"], 0)
+    return ser(await sdb.debit_notes.find_one({"_id": oid(item_id)}))
+
+
+@api.delete("/debit-notes/{item_id}")
+async def delete_debit_note(item_id: str, scope: dict = Depends(require_perm("debit-notes", "delete"))):
+    sdb = scope["db"]
+    if (await sdb.debit_notes.delete_one({"_id": oid(item_id)})).deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Record not found")
+    await sdb.ledger.delete_many({"ref_type": "debit_note", "ref_id": item_id})
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- ledger endpoints
 LEDGER_FIELDS = ["party_id", "date", "particulars", "debit", "credit", "payment_mode", "notes"]
-AUTO_REFS = ("purchase", "purchase_payment", "sale", "sale_payment", "receipt", "credit_note")
+AUTO_REFS = ("purchase", "purchase_payment", "sale", "sale_payment", "receipt", "credit_note", "debit_note")
 
 
 @api.get("/ledger")
-async def get_ledger(party_id: Optional[str] = None, scope: dict = Depends(require_admin_scope)):
+async def get_ledger(party_id: Optional[str] = None, scope: dict = Depends(require_perm("ledger", "view"))):
     if not party_id:
         return {"entries": [], "totals": {"debit": 0, "credit": 0, "balance": 0}}
     rows, totals = await ledger_rows(scope["db"], party_id)
@@ -654,7 +717,7 @@ async def get_ledger(party_id: Optional[str] = None, scope: dict = Depends(requi
 
 
 @api.post("/ledger")
-async def create_ledger(payload: dict = Body(...), scope: dict = Depends(require_admin_scope)):
+async def create_ledger(payload: dict = Body(...), scope: dict = Depends(require_perm("ledger", "create"))):
     doc = {k: v for k, v in payload.items() if k in LEDGER_FIELDS}
     if not doc.get("party_id"):
         raise HTTPException(status_code=400, detail="Party is required")
@@ -666,7 +729,7 @@ async def create_ledger(payload: dict = Body(...), scope: dict = Depends(require
 
 
 @api.put("/ledger/{item_id}")
-async def update_ledger(item_id: str, payload: dict = Body(...), scope: dict = Depends(require_admin_scope)):
+async def update_ledger(item_id: str, payload: dict = Body(...), scope: dict = Depends(require_perm("ledger", "edit"))):
     sdb = scope["db"]
     existing = await sdb.ledger.find_one({"_id": oid(item_id)})
     if not existing:
@@ -680,7 +743,7 @@ async def update_ledger(item_id: str, payload: dict = Body(...), scope: dict = D
 
 
 @api.delete("/ledger/{item_id}")
-async def delete_ledger(item_id: str, scope: dict = Depends(require_admin_scope)):
+async def delete_ledger(item_id: str, scope: dict = Depends(require_perm("ledger", "delete"))):
     sdb = scope["db"]
     existing = await sdb.ledger.find_one({"_id": oid(item_id)})
     if not existing:
@@ -692,7 +755,7 @@ async def delete_ledger(item_id: str, scope: dict = Depends(require_admin_scope)
 
 
 @api.get("/outstanding")
-async def outstanding(scope: dict = Depends(require_admin_scope)):
+async def outstanding(scope: dict = Depends(require_perm("ledger", "view"))):
     sdb = scope["db"]
     parties = await sdb.parties.find({}).to_list(5000)
     ledger = await sdb.ledger.find({}).to_list(50000)
@@ -954,7 +1017,7 @@ async def reorder_suggestions(scope: dict = Depends(get_scope)):
 
 # ---------------------------------------------------------------- invoices, reports, statements
 @api.get("/invoices")
-async def invoices(kind: Optional[str] = None, scope: dict = Depends(require_admin_scope)):
+async def invoices(kind: Optional[str] = None, scope: dict = Depends(require_perm("invoices", "view"))):
     sdb = scope["db"]
     receipts = await sdb.receipts.find({}).to_list(20000)
     rows = []
@@ -974,7 +1037,7 @@ async def invoices(kind: Optional[str] = None, scope: dict = Depends(require_adm
 @api.get("/reports/transactions")
 async def report_transactions(kind: str = "sales", category_id: Optional[str] = None,
                               date_from: Optional[str] = None, date_to: Optional[str] = None,
-                              party_id: Optional[str] = None, scope: dict = Depends(require_admin_scope)):
+                              party_id: Optional[str] = None, scope: dict = Depends(require_perm("reports", "view"))):
     if kind not in ("sales", "purchases"):
         raise HTTPException(status_code=400, detail="kind must be sales or purchases")
     q = {}
@@ -1010,7 +1073,7 @@ async def rate_stats(kind: str = "sales", product_id: Optional[str] = None, scop
 
 
 @api.post("/ledger/{party_id}/email-statement")
-async def email_statement(party_id: str, scope: dict = Depends(require_admin_scope)):
+async def email_statement(party_id: str, scope: dict = Depends(require_perm("ledger", "view"))):
     sdb = scope["db"]
     party = await sdb.parties.find_one({"_id": oid(party_id)})
     if not party:
@@ -1042,14 +1105,18 @@ async def create_user(payload: dict = Body(...), scope: dict = Depends(require_a
     email = str(payload.get("email", "")).strip().lower()
     password = str(payload.get("password", ""))
     role = payload.get("role") or "operator"
-    if role not in ("admin", "operator"):
-        raise HTTPException(status_code=400, detail="Role must be admin or operator")
+    if role not in ("admin", "operator", "custom"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    role_id = str(payload.get("role_id") or "")
+    if role == "custom" and (not role_id or not await db.roles.find_one({"_id": oid(role_id), "tenant_id": tenant_id})):
+        raise HTTPException(status_code=400, detail="Pick a valid custom role")
     if not email or len(password) < 6:
         raise HTTPException(status_code=400, detail="Email and a password of 6+ characters are required")
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="A user with this email already exists")
     res = await db.users.insert_one({"email": email, "name": payload.get("name") or email.split("@")[0],
-                                     "role": role, "tenant_id": tenant_id,
+                                     "role": role, "role_id": role_id if role == "custom" else "",
+                                     "tenant_id": tenant_id,
                                      "default_company_id": scope["company_id"],
                                      "password_hash": hash_password(password), "created_at": now_iso()})
     return ser(await db.users.find_one({"_id": res.inserted_id}))
@@ -1064,13 +1131,21 @@ async def update_user(item_id: str, payload: dict = Body(...), scope: dict = Dep
     if payload.get("name"):
         update["name"] = payload["name"]
     if payload.get("role"):
-        if payload["role"] not in ("admin", "operator"):
-            raise HTTPException(status_code=400, detail="Role must be admin or operator")
+        new_role = payload["role"]
+        if new_role not in ("admin", "operator", "custom"):
+            raise HTTPException(status_code=400, detail="Invalid role")
         if item_id == scope["user"]["id"]:
             raise HTTPException(status_code=400, detail="You cannot change your own role")
         if existing.get("role") == "owner":
             raise HTTPException(status_code=400, detail="The workspace owner's role cannot be changed")
-        update["role"] = payload["role"]
+        update["role"] = new_role
+        if new_role == "custom":
+            rid = str(payload.get("role_id") or "")
+            if not rid or not await db.roles.find_one({"_id": oid(rid), "tenant_id": scope["tenant"]["id"]}):
+                raise HTTPException(status_code=400, detail="Pick a valid custom role")
+            update["role_id"] = rid
+        else:
+            update["role_id"] = ""
     if payload.get("password"):
         if len(str(payload["password"])) < 6:
             raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
@@ -1090,6 +1165,61 @@ async def delete_user(item_id: str, scope: dict = Depends(require_admin_scope)):
     if existing.get("role") == "owner":
         raise HTTPException(status_code=400, detail="The workspace owner cannot be removed")
     await db.users.delete_one({"_id": oid(item_id)})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- roles (custom RBAC, per tenant)
+@api.get("/roles/features")
+async def roles_features(scope: dict = Depends(require_admin_scope)):
+    return {"features": ALL_FEATURES}
+
+
+@api.get("/roles")
+async def list_roles(scope: dict = Depends(require_admin_scope)):
+    return [ser(d) for d in await scope["db"].roles.find({}).sort("name", 1).to_list(500)]
+
+
+def clean_role(payload: dict) -> dict:
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Role name is required")
+    raw = payload.get("permissions") or {}
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=400, detail="Invalid permissions")
+    perms = {}
+    for feature, ops in raw.items():
+        if feature in ALL_FEATURES and isinstance(ops, list):
+            clean = [o for o in ops if o in ALL_FEATURES[feature]]
+            if clean:
+                perms[feature] = clean
+    if not perms:
+        raise HTTPException(status_code=400, detail="Pick at least one permission for this role")
+    return {"name": name, "permissions": perms}
+
+
+@api.post("/roles")
+async def create_role(payload: dict = Body(...), scope: dict = Depends(require_admin_scope)):
+    doc = clean_role(payload)
+    doc["created_at"] = now_iso()
+    res = await scope["db"].roles.insert_one(doc)
+    return ser(await scope["db"].roles.find_one({"_id": res.inserted_id}))
+
+
+@api.put("/roles/{item_id}")
+async def update_role(item_id: str, payload: dict = Body(...), scope: dict = Depends(require_admin_scope)):
+    doc = clean_role(payload)
+    doc["updated_at"] = now_iso()
+    if (await scope["db"].roles.update_one({"_id": oid(item_id)}, {"$set": doc})).matched_count == 0:
+        raise HTTPException(status_code=404, detail="Role not found")
+    return ser(await scope["db"].roles.find_one({"_id": oid(item_id)}))
+
+
+@api.delete("/roles/{item_id}")
+async def delete_role(item_id: str, scope: dict = Depends(require_admin_scope)):
+    if await db.users.count_documents({"tenant_id": scope["tenant"]["id"], "role_id": item_id}) > 0:
+        raise HTTPException(status_code=400, detail="This role is assigned to staff. Reassign them first.")
+    if (await scope["db"].roles.delete_one({"_id": oid(item_id)})).deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Role not found")
     return {"ok": True}
 
 
@@ -1157,7 +1287,7 @@ async def platform_delete_tenant(tenant_id: str, user: dict = Depends(require_su
     if (await db.tenants.delete_one({"_id": oid(tenant_id)})).deleted_count == 0:
         raise HTTPException(status_code=404, detail="Workspace not found")
     for coll in ("companies", "users", "parties", "product_categories", "products", "purchases",
-                 "sales", "ledger", "receipts", "credit_notes", "godowns", "price_lists", "counters"):
+                 "sales", "ledger", "receipts", "credit_notes", "debit_notes", "godowns", "price_lists", "counters", "roles"):
         await db[coll].delete_many({"tenant_id": tenant_id})
     return {"ok": True}
 

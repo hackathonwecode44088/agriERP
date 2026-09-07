@@ -1,0 +1,30 @@
+{
+  "summary": "Tested Phase 1: (1) Lot-hiding on sale bill vs purchase voucher, (2) Debit Notes CRUD + ledger sync, (3) Searchable/autocomplete dropdowns across Purchases/Sales/Price Lists/Debit Notes/Ledger. All three features work end-to-end. Backend pytest 3/3 pass. Frontend: Debit Notes creates (DN-00004) via searchable Party combobox, appears in ledger as DEBIT (Ramesh Traders shows DN-00001 ₹750, DN-00002 ₹321, DN-00004 ₹555 with closing receivable ₹1,626). PDF extraction confirms INV-00001 contains NO 'Lot No' text while PUR-00003 contains 'Lot No: LOTX-1'. Sale creation via searchable party+product combos succeeds.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CrudPage Dialog (all forms incl. Debit Notes)", "issues": ["Radix DialogContent missing aria-describedby / Description — a11y console warning: 'Missing Description or aria-describedby={undefined} for {DialogContent}'."]},
+      {"screen": "Debit Note create form", "issues": ["Date field default is empty — DN-00004 was saved with date '-' when the user leaves it blank. Consider defaulting to today (like Purchases/Sales)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_debit_notes.py", "/app/test_reports/pytest/debit_notes.xml"],
+  "action_items": [
+    "Optional: default Debit Note 'date' field to today's date (currently blank -> saves as '-').",
+    "Optional: add aria-describedby/DialogDescription to CrudPage form dialogs to silence a11y warnings.",
+    "Cleanup: pytest fixture leftover DN-00002 (₹321, reason 'TEST_pytest') exists in seeded tenant ledger (pytest itself cleans up, but earlier smoke run left one). Non-blocking."
+  ],
+  "critical_code_review_comments": [
+    "downloadInvoicePdf correctly gates lot printing on isSale (purchase-only). Clean minimal fix, doc.lot_no is still stored server-side (verified: sales list returns lot_no='LOTX-1' for INV-00001).",
+    "SearchableSelect: options rely on cmdk value=label — if two options share the same label, cmdk filtering and selection can collide. Consider passing a unique id in the cmdk value.",
+    "Debit Notes backend (server.py L646-688) mirrors credit notes correctly, sync_ledger uses ref_type='debit_note' and delete cascades ledger rows. Good."
+  ],
+  "updated_files": ["/app/backend/tests/test_debit_notes.py"],
+  "success_rate": {"backend": "100% (3/3 pytest)", "frontend": "100% on tested flows"},
+  "test_credentials": "merge_test_1788760554@demo.com / Owner@123",
+  "seed_data_creation": "Created UI debit note DN-00004 (Ramesh Traders, INV-UI-1, ₹555). Pytest creates/edits/deletes its own DN (verified via ledger delta).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Debit Notes route /admin/debit-notes; testids prefix 'debit-notes'. SearchableSelect renders inside Radix Dialog — needs ~400ms wait after opening popover before typing. PDF check: pypdf installed; INV-00001 must NOT contain 'Lot No', PUR-00003 must contain 'Lot No: LOTX-1'."
+}

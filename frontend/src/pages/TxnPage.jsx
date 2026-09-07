@@ -35,6 +35,8 @@ export const TxnPage = ({ kind }) => {
       computeAmount
       gst
       rateAlert={{ kind }}
+      priceLookup={{ kind }}
+      customFrom="product-categories"
       searchKeys={["invoice_no", "lot_no", "vehicle_no"]}
       filters={[
         { name: "category_id", label: "Category", allLabel: "All Categories", optionsFrom: "product-categories" },

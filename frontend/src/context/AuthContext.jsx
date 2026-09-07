@@ -7,6 +7,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [tenant, setTenant] = useState(null);
   const [companies, setCompanies] = useState([]);
+  const [perms, setPerms] = useState({});
+  const [isAdmin, setIsAdmin] = useState(false);
   const [companyId, setCompanyId] = useState(localStorage.getItem("companyId") || "");
 
   const loadMe = useCallback(async () => {
@@ -14,6 +16,8 @@ export const AuthProvider = ({ children }) => {
     setUser(data.user);
     setTenant(data.tenant);
     setCompanies(data.companies || []);
+    setPerms(data.perms || {});
+    setIsAdmin(!!data.is_admin);
     if (data.companies?.length) {
       const stored = localStorage.getItem("companyId");
       const active = data.companies.find((c) => c.id === stored)?.id || data.companies[0].id;
@@ -76,7 +80,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider
-      value={{ user, tenant, companies, companyId, login, signup, logout, switchCompany, refresh: loadMe }}
+      value={{ user, tenant, companies, companyId, perms, isAdmin, login, signup, logout, switchCompany, refresh: loadMe }}
     >
       {children}
     </AuthContext.Provider>
